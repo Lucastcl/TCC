@@ -1,0 +1,270 @@
+---
+title: "Construção da base longitudinal anual"
+subtitle: "Bairros do Rio de Janeiro, 2019-2024"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  library(jsonlite)
+  library(writexl)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+dados <- file.path(projeto, "dados")
+intermediarios <- file.path(dados, "intermediarios")
+finais <- file.path(dados, "finais")
+
+arquivo_isp <- file.path(intermediarios, "isp_bairro_ano.csv")
+arquivo_fogo <- file.path(intermediarios, "fogo_cruzado_bairro_ano.csv")
+arquivo_ips <- file.path(intermediarios, "ips_bairro.csv")
+arquivo_ibge <- file.path(intermediarios, "ibge_bairro.csv")
+arquivo_faccoes <- file.path(intermediarios, "faccoes_bairro_ano.csv")
+arquivo_bairros <- file.path(
+  dados, "brutos", "malhas", "bairros_oficiais.csv"
+)
+arquivo_regras <- file.path(dados, "regras_compatibilizacao_bairros.csv")
+arquivo_referencia <- file.path(
+  finais, "base_longitudinal_2019_2024_referencia_tcc.csv"
+)
+arquivo_saida_csv <- file.path(finais, "base_longitudinal_2019_2024.csv")
+arquivo_saida_xlsx <- file.path(finais, "base_longitudinal_2019_2024.xlsx")
+arquivo_auditoria <- file.path(
+  projeto, "resultados", "auditorias", "base_longitudinal.json"
+)
+
+dir.create(finais, recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(arquivo_auditoria), recursive = TRUE, showWarnings = FALSE)
+```
+
+# 1. Unidade e grade longitudinal
+
+A unidade da base é o par bairro-ano. O painel é balanceado: cada um dos 159
+bairros aparece uma vez em cada ano entre 2019 e 2024.
+
+```{r grade}
+normalizar_nome <- function(x) {
+  x %>%
+    as.character() %>%
+    str_squish() %>%
+    stri_trans_general("Latin-ASCII") %>%
+    str_to_lower() %>%
+    str_replace_all("[^a-z0-9]+", " ") %>%
+    str_squish()
+}
+
+regras <- read_csv(arquivo_regras, show_col_types = FALSE) %>%
+  filter(fontes == "todas") %>%
+  mutate(
+    origem_chave = normalizar_nome(origem),
+    destino = na_if(destino, "")
+  )
+
+mapa_regras <- setNames(regras$destino, regras$origem_chave)
+chaves_excluidas <- regras %>%
+  filter(acao == "excluir") %>%
+  pull(origem_chave)
+
+bairros <- read_csv(arquivo_bairros, show_col_types = FALSE) %>%
+  transmute(
+    bairro_original = str_squish(as.character(nome)),
+    chave = normalizar_nome(bairro_original),
+    bairro = if_else(chave %in% names(mapa_regras), mapa_regras[chave], bairro_original)
+  ) %>%
+  filter(!chave %in% chaves_excluidas, !is.na(bairro)) %>%
+  distinct(bairro, .keep_all = TRUE) %>%
+  mutate(bairro_id = row_number()) %>%
+  select(bairro, bairro_id)
+
+stopifnot(nrow(bairros) == 159)
+
+grade <- crossing(
+  bairro = bairros$bairro,
+  ano = 2019:2024
+) %>%
+  left_join(bairros, by = "bairro") %>%
+  mutate(periodo = ano - 2018L)
+
+grade %>%
+  summarise(
+    bairros = n_distinct(bairro),
+    anos = n_distinct(ano),
+    observacoes = n()
+  ) %>%
+  kable()
+```
+
+# 2. Leitura das bases intermediárias
+
+```{r leitura}
+isp <- read_csv(arquivo_isp, show_col_types = FALSE)
+fogo <- read_csv(arquivo_fogo, show_col_types = FALSE)
+ips <- read_csv(arquivo_ips, show_col_types = FALSE)
+ibge <- read_csv(arquivo_ibge, show_col_types = FALSE)
+faccoes <- read_csv(arquivo_faccoes, show_col_types = FALSE)
+
+tibble(
+  fonte = c("ISP", "Fogo Cruzado", "IPS", "IBGE", "Facções"),
+  linhas = c(nrow(isp), nrow(fogo), nrow(ips), nrow(ibge), nrow(faccoes))
+) %>%
+  kable()
+```
+
+# 3. Integração
+
+As contagens ausentes após a junção significam que não houve ocorrência no
+bairro e no ano, por isso recebem zero. As covariáveis estruturais não recebem
+imputação.
+
+```{r integracao}
+base <- grade %>%
+  left_join(isp, by = c("bairro", "ano")) %>%
+  left_join(faccoes, by = c("bairro", "ano")) %>%
+  left_join(ips, by = "bairro") %>%
+  left_join(ibge, by = "bairro") %>%
+  left_join(fogo, by = c("bairro", "ano")) %>%
+  mutate(
+    n_mvi = replace_na(as.integer(n_mvi), 0L),
+    fc_total_tiroteios = replace_na(as.integer(fc_total_tiroteios), 0L),
+    fc_acao_policial = replace_na(as.integer(fc_acao_policial), 0L)
+  ) %>%
+  select(
+    bairro,
+    ano,
+    n_mvi,
+    bairro_id,
+    periodo,
+    pct_area_dominacao_ada,
+    pct_area_dominacao_cv,
+    pct_area_dominacao_milicia,
+    pct_area_dominacao_tcp,
+    ips_2022_agua_saneamento,
+    ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas,
+    censo_2010_populacao_total,
+    censo_2010_rendimento_domiciliar_medio_brl,
+    fc_total_tiroteios,
+    fc_acao_policial
+  ) %>%
+  arrange(bairro_id, ano)
+
+base %>%
+  summarise(
+    observacoes = n(),
+    bairros = n_distinct(bairro),
+    mvi = sum(n_mvi),
+    tiroteios = sum(fc_total_tiroteios),
+    acoes_policiais = sum(fc_acao_policial),
+    valores_ausentes = sum(is.na(base))
+  ) %>%
+  kable()
+```
+
+# 4. Validação e exportação
+
+```{r validacao}
+stopifnot(
+  nrow(base) == 954,
+  ncol(base) == 15,
+  n_distinct(base$bairro) == 159,
+  identical(as.integer(sort(unique(base$ano))), 2019:2024),
+  !anyDuplicated(base[c("bairro", "ano")]),
+  sum(base$n_mvi) == 7419,
+  !anyNA(base)
+)
+
+referencia <- read_delim(
+  arquivo_referencia,
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  show_col_types = FALSE
+) %>%
+  arrange(bairro_id, ano)
+
+comparacao <- all.equal(
+  base,
+  referencia,
+  check.attributes = FALSE,
+  tolerance = 1e-8
+)
+
+stopifnot(isTRUE(comparacao))
+
+write_excel_csv2(base, arquivo_saida_csv, na = "")
+writexl::write_xlsx(base, arquivo_saida_xlsx)
+
+if (isTRUE(comparacao)) {
+  cat("Base reconstruída sem diferenças em relação ao arquivo de referência.\n")
+} else {
+  cat(
+    "Base reconstruída com diferenças em relação à referência congelada do TCC; ",
+    "verifique as etapas anteriores antes de usar a saída na modelagem.\n",
+    sep = ""
+  )
+}
+```
+
+```{r auditoria}
+auditoria <- list(
+  etapa = "base_longitudinal",
+  linhas = nrow(base),
+  colunas = ncol(base),
+  bairros = n_distinct(base$bairro),
+  anos = sort(unique(base$ano)),
+  total_mvi = sum(base$n_mvi),
+  total_tiroteios = sum(base$fc_total_tiroteios),
+  total_acoes_policiais = sum(base$fc_acao_policial),
+  duplicatas_bairro_ano = sum(duplicated(base[c("bairro", "ano")])),
+  valores_ausentes = sum(is.na(base)),
+  igual_referencia_tcc = isTRUE(comparacao),
+  observacao = paste(
+    "A base principal reproduz o arquivo congelado usado no TCC.",
+    "Consultas atualizadas das fontes devem ser feitas apenas pelo alvo atualizar-fontes."
+  )
+)
+
+write_json(
+  auditoria,
+  arquivo_auditoria,
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+auditoria
+```

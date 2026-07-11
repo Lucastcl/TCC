@@ -1,0 +1,8 @@
+{
+  "periodo": [2019, 2020, 2021, 2022, 2023, 2024],
+  "geojson_bruto": "dados/brutos/faccoes/geojson_bruto_2019_2024",
+  "geojson_enriquecido": "dados/brutos/faccoes/geojson_enriquecido_2019_2024",
+  "malha_principal": "dados/brutos/malhas/limite_bairros_2024.geojson",
+  "malha_auxiliar": "dados/brutos/malhas/limite_bairros_2017.geojson",
+  "crs_calculo_area": "EPSG:31983"
+}

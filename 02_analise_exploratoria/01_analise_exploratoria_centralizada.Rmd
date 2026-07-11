@@ -1,0 +1,520 @@
+---
+title: "Análise exploratória do TCC"
+subtitle: "Mortes Violentas Intencionais por bairro, 2019-2024"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: flatly
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  fig.width = 10,
+  fig.height = 6
+)
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(tibble)
+  library(janitor)
+  library(ggplot2)
+  library(scales)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+arquivo_base <- file.path(
+  projeto, "dados", "finais", "base_longitudinal_2019_2024.csv"
+)
+dir_figuras <- file.path(projeto, "resultados", "figuras")
+dir_tabelas <- file.path(projeto, "resultados", "tabelas")
+dir.create(dir_figuras, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_tabelas, recursive = TRUE, showWarnings = FALSE)
+
+tema_tcc <- theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.minor = element_blank(),
+    plot.title = element_blank(),
+    legend.position = "bottom"
+  )
+
+fmt_num <- function(x, digitos = 2) {
+  formatC(
+    x,
+    format = "f",
+    digits = digitos,
+    decimal.mark = ",",
+    big.mark = "."
+  )
+}
+
+base <- read_delim(
+  arquivo_base,
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  show_col_types = FALSE
+) %>%
+  clean_names() %>%
+  arrange(bairro_id, ano)
+
+base_bairro <- base %>%
+  group_by(bairro) %>%
+  summarise(
+    total_mvi = sum(n_mvi),
+    media_mvi = mean(n_mvi),
+    renda = first(censo_2010_rendimento_domiciliar_medio_brl),
+    populacao = first(censo_2010_populacao_total),
+    ips_agua = first(ips_2022_agua_saneamento),
+    ips_favelas = first(
+      ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas
+    ),
+    .groups = "drop"
+  )
+```
+
+# 1. Estrutura da base
+
+```{r resumo-base}
+resumo_base <- tibble(
+  indicador = c("Bairros", "Anos", "Observações", "MVI"),
+  valor = c(
+    n_distinct(base$bairro),
+    n_distinct(base$ano),
+    nrow(base),
+    sum(base$n_mvi)
+  )
+)
+
+resumo_base %>% kable()
+write_csv(resumo_base, file.path(dir_tabelas, "analise_resumo_base.csv"))
+```
+
+# 2. Comportamento anual do MVI
+
+```{r estatisticas-mvi}
+estatisticas_mvi <- base %>%
+  group_by(ano) %>%
+  summarise(
+    N = n(),
+    Total = sum(n_mvi),
+    Media = mean(n_mvi),
+    DP = sd(n_mvi),
+    CV = DP / Media * 100,
+    Mediana = median(n_mvi),
+    Minimo = min(n_mvi),
+    Maximo = max(n_mvi),
+    .groups = "drop"
+  )
+
+estatisticas_mvi %>% kable(digits = 2)
+write_csv(
+  estatisticas_mvi,
+  file.path(dir_tabelas, "analise_estatisticas_mvi_anuais.csv")
+)
+```
+
+```{r correlacao-anos}
+base_larga <- base %>%
+  select(bairro, ano, n_mvi) %>%
+  pivot_wider(names_from = ano, values_from = n_mvi) %>%
+  arrange(bairro)
+
+correlacao_anos <- cor(
+  base_larga %>% select(-bairro),
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
+
+round(correlacao_anos, 2) %>% kable()
+write_csv(
+  as.data.frame(correlacao_anos) %>% rownames_to_column("ano"),
+  file.path(dir_tabelas, "analise_correlacao_mvi_entre_anos.csv")
+)
+```
+
+```{r heatmap-anos}
+correlacao_anos_longa <- as.data.frame(as.table(correlacao_anos)) %>%
+  rename(ano_linha = Var1, ano_coluna = Var2, correlacao = Freq) %>%
+  mutate(
+    ano_linha = as.character(ano_linha),
+    ano_coluna = as.character(ano_coluna)
+  )
+
+grafico_correlacao_anos <- ggplot(
+  correlacao_anos_longa,
+  aes(ano_coluna, ano_linha, fill = correlacao)
+) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = fmt_num(correlacao)), size = 4) +
+  scale_fill_gradient2(
+    low = "#B54A3A",
+    mid = "#F4F1E8",
+    high = "#2B7A4B",
+    midpoint = 0,
+    limits = c(-1, 1)
+  ) +
+  labs(x = "Ano", y = "Ano", fill = "Correlação") +
+  coord_equal() +
+  tema_tcc
+
+grafico_correlacao_anos
+ggsave(
+  file.path(dir_figuras, "analise_correlacao_mvi_entre_anos.png"),
+  grafico_correlacao_anos,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+# 3. Trajetórias dos bairros
+
+```{r trajetorias}
+grafico_trajetorias <- ggplot(
+  base,
+  aes(ano, n_mvi, group = bairro)
+) +
+  geom_line(color = "#4878A8", alpha = 0.25, linewidth = 0.45) +
+  geom_line(
+    data = filter(base, bairro == "Bangu"),
+    color = "#C4512D",
+    linewidth = 1.2
+  ) +
+  scale_x_continuous(breaks = 2019:2024) +
+  labs(x = "Ano", y = "MVI anual por bairro") +
+  tema_tcc
+
+grafico_trajetorias
+ggsave(
+  file.path(dir_figuras, "analise_trajetorias_mvi_bairros.png"),
+  grafico_trajetorias,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+```
+
+```{r top10}
+top10 <- base_bairro %>%
+  slice_max(total_mvi, n = 10, with_ties = FALSE)
+
+base %>%
+  filter(bairro %in% top10$bairro) %>%
+  ggplot(aes(ano, n_mvi, color = bairro)) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.8) +
+  scale_x_continuous(breaks = 2019:2024) +
+  labs(x = "Ano", y = "MVI anual", color = "Bairro") +
+  tema_tcc
+
+write_csv(top10, file.path(dir_tabelas, "analise_top10_mvi.csv"))
+ggsave(
+  file.path(dir_figuras, "analise_trajetorias_top10_mvi.png"),
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+```
+
+# 4. Covariáveis observadas em um ano de referência
+
+```{r descritivas-estaticas}
+resumir_variavel <- function(dados, coluna, rotulo) {
+  x <- dados[[coluna]]
+  tibble(
+    variavel = rotulo,
+    N = sum(!is.na(x)),
+    media = mean(x, na.rm = TRUE),
+    dp = sd(x, na.rm = TRUE),
+    mediana = median(x, na.rm = TRUE),
+    minimo = min(x, na.rm = TRUE),
+    maximo = max(x, na.rm = TRUE)
+  )
+}
+
+descritivas_estaticas <- bind_rows(
+  resumir_variavel(base_bairro, "renda", "Renda domiciliar média (2010)"),
+  resumir_variavel(base_bairro, "populacao", "População total (2010)"),
+  resumir_variavel(base_bairro, "ips_agua", "IPS água e saneamento"),
+  resumir_variavel(
+    base_bairro,
+    "ips_favelas",
+    "Pessoas vivendo em favelas não urbanizadas"
+  )
+)
+
+descritivas_estaticas %>% kable(digits = 2)
+write_csv(
+  descritivas_estaticas,
+  file.path(dir_tabelas, "analise_covariaveis_estaticas.csv")
+)
+```
+
+# 5. Ações policiais e tiroteios
+
+```{r descritivas-fogo}
+resumir_anual <- function(dados, coluna, rotulo) {
+  dados %>%
+    group_by(ano) %>%
+    summarise(
+      variavel = rotulo,
+      N = n(),
+      total = sum(.data[[coluna]]),
+      media = mean(.data[[coluna]]),
+      dp = sd(.data[[coluna]]),
+      cv = dp / media * 100,
+      mediana = median(.data[[coluna]]),
+      minimo = min(.data[[coluna]]),
+      maximo = max(.data[[coluna]]),
+      .groups = "drop"
+    )
+}
+
+descritivas_fogo <- bind_rows(
+  resumir_anual(base, "fc_acao_policial", "Ação policial"),
+  resumir_anual(base, "fc_total_tiroteios", "Tiroteios")
+)
+
+descritivas_fogo %>% kable(digits = 2)
+write_csv(
+  descritivas_fogo,
+  file.path(dir_tabelas, "analise_fogo_cruzado_anuais.csv")
+)
+```
+
+```{r dispersao-acao}
+grafico_acao <- ggplot(
+  base,
+  aes(fc_acao_policial, n_mvi)
+) +
+  geom_point(color = "#4B86B4", alpha = 0.65, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "#C45A1A", linewidth = 0.8) +
+  facet_wrap(~ ano, ncol = 3) +
+  labs(x = "Ações policiais por bairro", y = "MVI anual por bairro") +
+  tema_tcc
+
+grafico_acao
+ggsave(
+  file.path(dir_figuras, "analise_mvi_acao_policial_por_ano.png"),
+  grafico_acao,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+```
+
+```{r dispersao-tiroteios}
+grafico_tiroteios <- ggplot(
+  base,
+  aes(fc_total_tiroteios, n_mvi)
+) +
+  geom_point(color = "#4B86B4", alpha = 0.65, size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "#C45A1A", linewidth = 0.8) +
+  facet_wrap(~ ano, ncol = 3) +
+  labs(x = "Tiroteios por bairro", y = "MVI anual por bairro") +
+  tema_tcc
+
+grafico_tiroteios
+ggsave(
+  file.path(dir_figuras, "analise_mvi_tiroteios_por_ano.png"),
+  grafico_tiroteios,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+```
+
+# 6. IPS, população e renda
+
+```{r dispersoes-estaticas}
+covariaveis_estaticas <- tribble(
+  ~variavel, ~rotulo,
+  "censo_2010_rendimento_domiciliar_medio_brl", "Renda domiciliar média (R$)",
+  "censo_2010_populacao_total", "População total",
+  "ips_2022_agua_saneamento", "IPS água e saneamento",
+  "ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas",
+  "Proporção de pessoas vivendo em favelas não urbanizadas"
+)
+
+base_media_mvi <- base %>%
+  group_by(bairro) %>%
+  summarise(
+    mvi_medio = mean(n_mvi),
+    across(
+      all_of(covariaveis_estaticas$variavel),
+      first
+    ),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(
+    cols = all_of(covariaveis_estaticas$variavel),
+    names_to = "variavel",
+    values_to = "valor"
+  ) %>%
+  left_join(covariaveis_estaticas, by = "variavel")
+
+grafico_estaticas <- ggplot(
+  base_media_mvi,
+  aes(valor, mvi_medio)
+) +
+  geom_point(color = "#4B86B4", alpha = 0.7) +
+  facet_wrap(~ rotulo, scales = "free_x", ncol = 2) +
+  labs(x = NULL, y = "MVI médio anual por bairro") +
+  tema_tcc
+
+grafico_estaticas
+ggsave(
+  file.path(dir_figuras, "analise_mvi_covariaveis_estaticas.png"),
+  grafico_estaticas,
+  width = 11,
+  height = 8,
+  dpi = 300
+)
+```
+
+# 7. Domínio territorial
+
+```{r dominio}
+dominio_longo <- base %>%
+  select(
+    bairro,
+    ano,
+    n_mvi,
+    pct_area_dominacao_ada,
+    pct_area_dominacao_cv,
+    pct_area_dominacao_milicia,
+    pct_area_dominacao_tcp
+  ) %>%
+  pivot_longer(
+    starts_with("pct_area_dominacao_"),
+    names_to = "grupo",
+    values_to = "percentual"
+  ) %>%
+  mutate(
+    grupo = recode(
+      grupo,
+      pct_area_dominacao_ada = "ADA",
+      pct_area_dominacao_cv = "CV",
+      pct_area_dominacao_milicia = "Milícia",
+      pct_area_dominacao_tcp = "TCP"
+    )
+  )
+
+grafico_dominio <- ggplot(
+  dominio_longo,
+  aes(percentual, n_mvi)
+) +
+  geom_point(color = "#4B86B4", alpha = 0.45, size = 1.1) +
+  facet_grid(grupo ~ ano, scales = "free_x") +
+  labs(x = "Percentual da área do bairro", y = "MVI anual") +
+  tema_tcc
+
+grafico_dominio
+ggsave(
+  file.path(dir_figuras, "analise_mvi_dominio_territorial.png"),
+  grafico_dominio,
+  width = 13,
+  height = 10,
+  dpi = 300
+)
+```
+
+# 8. Correlações entre MVI e covariáveis
+
+```{r correlacoes}
+variaveis_correlacao <- c(
+  "censo_2010_rendimento_domiciliar_medio_brl",
+  "censo_2010_populacao_total",
+  "ips_2022_agua_saneamento",
+  "ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas",
+  "fc_total_tiroteios",
+  "fc_acao_policial",
+  "pct_area_dominacao_ada",
+  "pct_area_dominacao_cv",
+  "pct_area_dominacao_milicia",
+  "pct_area_dominacao_tcp"
+)
+
+correlacoes_mvi <- crossing(
+  ano = 2019:2024,
+  variavel = variaveis_correlacao
+) %>%
+  rowwise() %>%
+  mutate(
+    pearson = cor(
+      base$n_mvi[base$ano == ano],
+      base[[variavel]][base$ano == ano],
+      use = "complete.obs",
+      method = "pearson"
+    ),
+    spearman = cor(
+      base$n_mvi[base$ano == ano],
+      base[[variavel]][base$ano == ano],
+      use = "complete.obs",
+      method = "spearman"
+    )
+  ) %>%
+  ungroup()
+
+correlacoes_mvi %>% kable(digits = 3)
+write_csv(
+  correlacoes_mvi,
+  file.path(dir_tabelas, "analise_correlacoes_mvi_covariaveis.csv")
+)
+```
+
+# 9. Matriz de correlação das covariáveis
+
+```{r matriz-covariaveis}
+base_correlacao <- base %>%
+  select(all_of(variaveis_correlacao)) %>%
+  distinct()
+
+matriz_covariaveis <- cor(
+  base_correlacao,
+  use = "pairwise.complete.obs",
+  method = "pearson"
+)
+
+round(matriz_covariaveis, 2) %>% kable()
+write_csv(
+  as.data.frame(matriz_covariaveis) %>% rownames_to_column("variavel"),
+  file.path(dir_tabelas, "analise_matriz_correlacao_covariaveis.csv")
+)
+```

@@ -1,0 +1,16 @@
+variavel;tipo;variacao;descricao;fonte
+bairro;texto;bairro;Nome oficial da unidade territorial;Prefeitura do Rio
+ano;inteiro;2019-2024;Ano da observacao;Painel longitudinal
+n_mvi;inteiro;bairro-ano;Numero de Mortes Violentas Intencionais;ISP-RJ
+bairro_id;inteiro;bairro;Identificador interno do bairro;Painel longitudinal
+periodo;inteiro;ano;Tempo de 1 a 6 correspondente a 2019-2024;Painel longitudinal
+pct_area_dominacao_ada;numerico;bairro-ano;Percentual da area sob dominio de ADA;Mapas do Fogo Cruzado
+pct_area_dominacao_cv;numerico;bairro-ano;Percentual da area sob dominio do CV;Mapas do Fogo Cruzado
+pct_area_dominacao_milicia;numerico;bairro-ano;Percentual da area sob dominio de milicia;Mapas do Fogo Cruzado
+pct_area_dominacao_tcp;numerico;bairro-ano;Percentual da area sob dominio do TCP;Mapas do Fogo Cruzado
+ips_2022_agua_saneamento;numerico;bairro;Indicador de Agua e Saneamento;IPS Rio 2022
+ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas;numerico;bairro;Proporcao de pessoas em favelas nao urbanizadas;IPS Rio 2022
+censo_2010_populacao_total;inteiro;bairro;Populacao total;IBGE Censo 2010
+censo_2010_rendimento_domiciliar_medio_brl;numerico;bairro;Rendimento domiciliar medio em reais;IBGE Censo 2010
+fc_total_tiroteios;inteiro;bairro-ano;Numero de tiroteios;Fogo Cruzado
+fc_acao_policial;inteiro;bairro-ano;Numero de ocorrencias com acao policial;Fogo Cruzado

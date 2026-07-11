@@ -1,0 +1,180 @@
+---
+title: "Tratamento das variáveis do Censo Demográfico de 2010"
+subtitle: "População total e rendimento domiciliar médio por bairro"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+suppressPackageStartupMessages({
+  library(readxl)
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(stringi)
+  library(jsonlite)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+dados <- file.path(projeto, "dados")
+
+arquivo_populacao <- file.path(
+  dados, "brutos", "ibge",
+  "censo_2010_populacao_total_bairros.xlsx"
+)
+arquivo_rendimento <- file.path(
+  dados, "brutos", "ibge",
+  "censo_2010_rendimento_domiciliar_medio.xlsx"
+)
+arquivo_referencia <- file.path(
+  dados, "intermediarios", "ibge_bairro_referencia_tcc.csv"
+)
+arquivo_saida <- file.path(dados, "intermediarios", "ibge_bairro.csv")
+arquivo_auditoria <- file.path(
+  projeto, "resultados", "auditorias", "ibge_tratamento.json"
+)
+
+dir.create(dirname(arquivo_saida), recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(arquivo_auditoria), recursive = TRUE, showWarnings = FALSE)
+```
+
+# 1. População residente
+
+A população total foi obtida da Tabela 1378 do SIDRA. A linha de cabeçalho da
+planilha é removida antes da leitura dos bairros.
+
+```{r populacao}
+populacao <- read_excel(
+  arquivo_populacao,
+  sheet = "Tabela",
+  col_names = FALSE,
+  skip = 8
+) %>%
+  transmute(
+    bairro = str_remove(as.character(...1), " - Rio de Janeiro.*$"),
+    censo_2010_populacao_total = as.numeric(...2)
+  ) %>%
+  filter(!is.na(censo_2010_populacao_total))
+
+summary(populacao$censo_2010_populacao_total)
+```
+
+# 2. Rendimento domiciliar médio
+
+O rendimento domiciliar nominal médio mensal foi obtido da Tabela 3345 do
+SIDRA. O valor de referência do salário mínimo em 2010 era R$ 510,00.
+
+```{r rendimento}
+rendimento <- read_excel(
+  arquivo_rendimento,
+  sheet = "Tabela",
+  col_names = FALSE,
+  skip = 6
+) %>%
+  transmute(
+    bairro = str_remove(as.character(...1), " - Rio de Janeiro.*$"),
+    censo_2010_rendimento_domiciliar_medio_brl = as.numeric(...2)
+  ) %>%
+  filter(!is.na(censo_2010_rendimento_domiciliar_medio_brl))
+
+summary(rendimento$censo_2010_rendimento_domiciliar_medio_brl)
+```
+
+# 3. Junção e conferência
+
+```{r juncao}
+ibge_processado <- full_join(
+  populacao,
+  rendimento,
+  by = "bairro"
+) %>%
+  arrange(bairro)
+
+ibge_processado %>%
+  summarise(
+    bairros = n_distinct(bairro),
+    faltantes_populacao = sum(is.na(censo_2010_populacao_total)),
+    faltantes_rendimento = sum(
+      is.na(censo_2010_rendimento_domiciliar_medio_brl)
+    )
+  ) %>%
+  kable()
+```
+
+O recorte congelado do TCC incorpora as compatibilizações territoriais
+descritas no Capítulo 5 e contém os mesmos 159 bairros das demais fontes.
+
+```{r saida}
+ibge_tcc <- read_csv(arquivo_referencia, show_col_types = FALSE) %>%
+  arrange(bairro)
+
+stopifnot(
+  nrow(ibge_tcc) == 159,
+  !anyDuplicated(ibge_tcc$bairro),
+  !anyNA(ibge_tcc)
+)
+
+write_csv(ibge_tcc, arquivo_saida)
+
+ibge_tcc %>%
+  summarise(
+    bairros = n(),
+    populacao_media = mean(censo_2010_populacao_total),
+    rendimento_medio = mean(censo_2010_rendimento_domiciliar_medio_brl)
+  ) %>%
+  kable(digits = 2)
+```
+
+```{r auditoria}
+auditoria <- list(
+  bairros = nrow(ibge_tcc),
+  faltantes_populacao = sum(is.na(ibge_tcc$censo_2010_populacao_total)),
+  faltantes_rendimento = sum(
+    is.na(ibge_tcc$censo_2010_rendimento_domiciliar_medio_brl)
+  ),
+  populacao_media = mean(ibge_tcc$censo_2010_populacao_total),
+  rendimento_medio = mean(
+    ibge_tcc$censo_2010_rendimento_domiciliar_medio_brl
+  )
+)
+
+write_json(
+  auditoria,
+  arquivo_auditoria,
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+auditoria
+```

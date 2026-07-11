@@ -1,0 +1,2042 @@
+---
+title: "Modelagem Final do TCC - Sensibilidade por Distancia de Cook"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+options(width = 140, scipen = 999)
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  out.width = "100%"
+)
+
+suppressPackageStartupMessages({
+  library(MASS)
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(tibble)
+  library(purrr)
+  library(glmtoolbox)
+  library(ggplot2)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+lib_local_r <- file.path(projeto, "R", "library")
+if (dir.exists(lib_local_r)) {
+  .libPaths(c(lib_local_r, .libPaths()))
+}
+
+arquivo_base <- file.path(
+  projeto, "dados", "finais", "base_longitudinal_2019_2024.csv"
+)
+dir_figuras <- file.path(projeto, "resultados", "figuras")
+dir_tabelas <- file.path(projeto, "resultados", "tabelas")
+dir_auditorias <- file.path(projeto, "resultados", "auditorias")
+
+dir.create(dir_figuras, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_tabelas, recursive = TRUE, showWarnings = FALSE)
+dir.create(dir_auditorias, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r funcoes-apoio}
+# Funcoes curtas para ajustar e resumir os modelos
+extrair_qic_modelagem <- function(modelo, u = FALSE) {
+  as.numeric(glmtoolbox::QIC(modelo, u = u, verbose = FALSE))[1]
+}
+
+extrair_qicb_modelagem <- function(modelo) {
+  as.numeric(
+    glmtoolbox::QIC(
+      modelo,
+      k = log(length(modelo$sizes)),
+      u = FALSE,
+      verbose = FALSE
+    )
+  )[1]
+}
+
+extrair_cic_modelagem <- function(modelo) {
+  as.numeric(glmtoolbox::CIC(modelo, verbose = FALSE))[1]
+}
+
+ajustar_theta_nb <- function(formula_modelo, base) {
+  modelo_theta <- try(
+    MASS::glm.nb(
+      formula_modelo,
+      data = base,
+      control = stats::glm.control(maxit = 100),
+      init.theta = 1
+    ),
+    silent = TRUE
+  )
+
+  if (inherits(modelo_theta, "try-error")) {
+    modelo_theta <- MASS::glm.nb(
+      formula_modelo,
+      data = base,
+      control = stats::glm.control(maxit = 100)
+    )
+  }
+
+  modelo_theta
+}
+
+ajustar_gee_nb <- function(formula_modelo, base, corstr) {
+  modelo_theta <- ajustar_theta_nb(formula_modelo, base)
+
+  modelo_gee <- NULL
+  invisible(capture.output({
+    modelo_gee <- glmtoolbox::glmgee(
+      formula_modelo,
+      id = bairro,
+      waves = waves_pos,
+      data = base,
+      family = MASS::negative.binomial(modelo_theta$theta),
+      corstr = corstr,
+      start = stats::coef(modelo_theta),
+      maxit = 100
+    )
+    invisible(NULL)
+  }))
+
+  list(
+    theta = modelo_theta$theta,
+    theta_se = modelo_theta$SE.theta,
+    gee = modelo_gee,
+    qic = extrair_qic_modelagem(modelo_gee, u = FALSE),
+    qicu = extrair_qic_modelagem(modelo_gee, u = TRUE),
+    qicb = extrair_qicb_modelagem(modelo_gee),
+    cic = extrair_cic_modelagem(modelo_gee)
+  )
+}
+
+resumo_coeficientes_gee <- function(modelo_gee, varest = "robust", z_critico = 1.96) {
+  resumo_gee <- NULL
+  invisible(capture.output({
+    resumo_gee <- summary(modelo_gee, varest = varest)
+  }))
+
+  coef_mat <- as.data.frame(resumo_gee$coefficients)
+  coef_mat$termo <- rownames(coef_mat)
+  rownames(coef_mat) <- NULL
+
+  estimate_col <- intersect(c("Estimate", "estimate"), names(coef_mat))[1]
+  se_col <- intersect(c("Std.Error", "Std.err", "Std. Error"), names(coef_mat))[1]
+  p_col <- intersect(c("Pr(>|z|)", "Pr(>|W|)", "p-value"), names(coef_mat))[1]
+
+  coef_mat %>%
+    dplyr::filter(!is.na(termo), termo != "", termo != "Dispersion") %>%
+    dplyr::transmute(
+      termo = termo,
+      estimativa = .data[[estimate_col]],
+      erro_padrao = .data[[se_col]],
+      z_wald = estimativa / erro_padrao,
+      p_valor = .data[[p_col]],
+      ic95_beta_inf = estimativa - z_critico * erro_padrao,
+      ic95_beta_sup = estimativa + z_critico * erro_padrao,
+      irr = exp(estimativa),
+      ic95_irr_inf = exp(ic95_beta_inf),
+      ic95_irr_sup = exp(ic95_beta_sup),
+      variancia_estimacao = varest
+    )
+}
+
+comparar_se_robusto_modelo <- function(modelo_gee) {
+  coef_robusto <- resumo_coeficientes_gee(modelo_gee, varest = "robust") %>%
+    dplyr::rename(
+      estimativa_robusta = estimativa,
+      erro_padrao_robusto = erro_padrao,
+      z_wald_robusto = z_wald,
+      p_valor_robusto = p_valor,
+      irr_robusta = irr
+    ) %>%
+    dplyr::select(
+      termo,
+      estimativa_robusta,
+      erro_padrao_robusto,
+      z_wald_robusto,
+      p_valor_robusto,
+      irr_robusta
+    )
+
+  coef_model <- resumo_coeficientes_gee(modelo_gee, varest = "model") %>%
+    dplyr::rename(
+      estimativa_model = estimativa,
+      erro_padrao_model = erro_padrao,
+      z_wald_model = z_wald,
+      p_valor_model = p_valor,
+      irr_model = irr
+    ) %>%
+    dplyr::select(
+      termo,
+      estimativa_model,
+      erro_padrao_model,
+      z_wald_model,
+      p_valor_model,
+      irr_model
+    )
+
+  coef_robusto %>%
+    left_join(coef_model, by = "termo") %>%
+    mutate(
+      razao_ep_robusto_model = erro_padrao_robusto / erro_padrao_model,
+      diferenca_ep = erro_padrao_robusto - erro_padrao_model
+    )
+}
+
+prever_media_modelagem <- function(formula_modelo, modelo_gee, base) {
+  matriz_x <- stats::model.matrix(formula_modelo, data = base)
+  as.numeric(exp(matriz_x %*% stats::coef(modelo_gee)))
+}
+
+montar_formula_modelagem <- function(
+  covariaveis = character(0),
+  termos_tempo = c("tempo", "I(tempo^2)", "I(tempo^3)"),
+  variavel_interacao = NULL,
+  termos_interacao = character(0),
+  termos_extras = character(0)
+) {
+  termos <- c(termos_tempo, covariaveis, termos_extras)
+
+  if (!is.null(variavel_interacao) && length(termos_interacao) > 0) {
+    termos <- c(termos, paste0(variavel_interacao, ":", termos_interacao))
+  }
+
+  if (length(termos) == 0) {
+    return(stats::as.formula("n_mvi ~ 1"))
+  }
+
+  stats::as.formula(paste("n_mvi ~", paste(termos, collapse = " + ")))
+}
+
+formatar_formula_modelagem <- function(formula_modelo) {
+  paste(deparse(formula_modelo), collapse = " ")
+}
+
+extrair_anova_gee <- function(modelo_reduzido, modelo_completo, comparacao) {
+  tabela <- as.data.frame(anova(modelo_reduzido, modelo_completo))
+
+  tibble(
+    comparacao = comparacao,
+    chi2 = as.numeric(tabela[[1]][1]),
+    gl = as.numeric(tabela[[2]][1]),
+    p_valor = as.numeric(tabela[[3]][1])
+  )
+}
+
+correlacao_variaveis_modelagem <- function(base, variaveis) {
+  if (length(variaveis) == 1) {
+    return(matrix(1, nrow = 1, ncol = 1, dimnames = list(variaveis, variaveis)))
+  }
+
+  stats::cor(
+    as.data.frame(base[, variaveis, drop = FALSE]),
+    use = "pairwise.complete.obs"
+  )
+}
+
+resumo_vetor <- function(x) {
+  tibble(
+    n = length(x),
+    media = mean(x, na.rm = TRUE),
+    desvio_padrao = stats::sd(x, na.rm = TRUE),
+    minimo = min(x, na.rm = TRUE),
+    q1 = as.numeric(stats::quantile(x, probs = 0.25, names = FALSE, na.rm = TRUE)),
+    mediana = stats::median(x, na.rm = TRUE),
+    q3 = as.numeric(stats::quantile(x, probs = 0.75, names = FALSE, na.rm = TRUE)),
+    maximo = max(x, na.rm = TRUE)
+  )
+}
+
+construir_ordens_interacao_tempo <- function(termos_tempo) {
+  ordens <- list()
+
+  if (length(termos_tempo) >= 1) ordens$linear <- termos_tempo[1]
+  if (length(termos_tempo) >= 2) ordens$quadratica <- termos_tempo[1:2]
+  if (length(termos_tempo) >= 3) ordens$cubica <- termos_tempo[1:3]
+  if (length(termos_tempo) >= 4) ordens$quartica <- termos_tempo[1:4]
+
+  ordens
+}
+```
+
+# 1. Base da modelagem
+
+```{r base-modelagem}
+# Base anual final usada na modelagem
+dados <- read_delim(
+  arquivo_base,
+  delim = ";",
+  locale = locale(decimal_mark = ","),
+  show_col_types = FALSE
+) %>%
+  transmute(
+    bairro = as.character(bairro),
+    ano = as.numeric(ano),
+    n_mvi = as.numeric(n_mvi),
+    pop_total = censo_2010_populacao_total / 10000,
+    renda = censo_2010_rendimento_domiciliar_medio_brl / 510,
+    ips_favelas_nao_urbanizadas =
+      ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas * 100,
+    acao_policial = fc_acao_policial,
+    tiroteio = fc_total_tiroteios,
+    cv = pct_area_dominacao_cv,
+    milicia = pct_area_dominacao_milicia,
+    tcp = pct_area_dominacao_tcp,
+    ada = pct_area_dominacao_ada,
+    dominio_total =
+      pct_area_dominacao_ada +
+      pct_area_dominacao_cv +
+      pct_area_dominacao_milicia +
+      pct_area_dominacao_tcp
+  ) %>%
+  filter(ano >= 2019, ano <= 2024) %>%
+  drop_na() %>%
+  arrange(bairro, ano) %>%
+  mutate(
+    bairro = factor(trimws(bairro)),
+    tempo = ano - 2019,
+    waves_pos = tempo + 1
+  )
+
+variaveis_ativas_blocos <- c(
+  "renda",
+  "ips_favelas_nao_urbanizadas",
+  "pop_total",
+  "acao_policial",
+  "tiroteio",
+  "cv",
+  "milicia",
+  "tcp",
+  "ada",
+  "dominio_total"
+)
+
+rotulos_variaveis <- c(
+  pop_total = "Populacao total (2010, por 10 mil hab.)",
+  renda = "Renda domiciliar media (2010, por R$510)",
+  ips_favelas_nao_urbanizadas = "IPS favelas nao urbanizadas (p.p.)",
+  acao_policial = "Acao policial",
+  tiroteio = "Tiroteios",
+  cv = "Dominio CV",
+  milicia = "Dominio milicia",
+  tcp = "Dominio TCP",
+  ada = "Dominio ADA",
+  dominio_total = "Dominio total"
+)
+
+blocos_variaveis <- list(
+  contexto_socioeconomico = c("renda", "ips_favelas_nao_urbanizadas", "pop_total"),
+  seguranca_publica = c("acao_policial", "tiroteio"),
+  dominio_territorial = c("cv", "milicia", "tcp", "ada", "dominio_total")
+)
+
+tabela_painel <- tibble(
+  indicador = c("bairros", "anos", "observacoes", "periodo"),
+  valor = c(
+    n_distinct(dados$bairro),
+    n_distinct(dados$ano),
+    nrow(dados),
+    paste0(min(dados$ano), "-", max(dados$ano))
+  )
+)
+
+completude_modelagem <- tibble(
+  variavel = c("n_mvi", "tempo", variaveis_ativas_blocos),
+  faltantes = c(
+    sum(is.na(dados$n_mvi)),
+    sum(is.na(dados$tempo)),
+    map_int(variaveis_ativas_blocos, ~ sum(is.na(dados[[.x]])))
+  ),
+  total_observacoes = nrow(dados),
+  total_bairros = n_distinct(dados$bairro)
+)
+
+print(tabela_painel)
+print(completude_modelagem)
+```
+
+# 2. Sobredispersao e forma do tempo
+
+```{r superdispersao-tempo}
+# Sobredispersao da contagem bruta
+superdispersao_bruta <- tibble(
+  n_bairros = n_distinct(dados$bairro),
+  n_observacoes = nrow(dados),
+  media_n_mvi = mean(dados$n_mvi),
+  variancia_n_mvi = var(dados$n_mvi),
+  razao_variancia_media = variancia_n_mvi / media_n_mvi
+)
+
+# GEE Poisson apenas para verificar sobredispersao
+gee_poisson_tempo3 <- NULL
+invisible(capture.output({
+  gee_poisson_tempo3 <- glmtoolbox::glmgee(
+    n_mvi ~ tempo + I(tempo^2) + I(tempo^3),
+    id = bairro,
+    waves = waves_pos,
+    data = dados,
+    family = poisson(link = "log"),
+    corstr = "Independence",
+    maxit = 100
+  )
+  invisible(NULL)
+}))
+
+resumo_poisson <- summary(gee_poisson_tempo3)
+superdispersao_poisson <- tibble(
+  modelo = "GEE Poisson tempo cubico sob independence",
+  familia = "Poisson",
+  desvio_residual = deviance(gee_poisson_tempo3),
+  gl_residual = df.residual(gee_poisson_tempo3),
+  dispersao_pearson = as.numeric(resumo_poisson$dispersion)
+)
+
+formulas_tempo <- list(
+  M0 = n_mvi ~ 1,
+  M1 = n_mvi ~ tempo,
+  M2 = n_mvi ~ tempo + I(tempo^2),
+  M3 = n_mvi ~ tempo + I(tempo^2) + I(tempo^3),
+  M4 = n_mvi ~ tempo + I(tempo^2) + I(tempo^3) + I(tempo^4)
+)
+
+rotulos_forma_tempo <- c(
+  M0 = "Intercepto",
+  M1 = "Linear",
+  M2 = "Quadratica",
+  M3 = "Cubica",
+  M4 = "Quartica"
+)
+
+estruturas_media_tempo <- c(
+  M0 = "1",
+  M1 = "tempo",
+  M2 = "tempo + tempo^2",
+  M3 = "tempo + tempo^2 + tempo^3",
+  M4 = "tempo + tempo^2 + tempo^3 + tempo^4"
+)
+
+termos_tempo_por_modelo <- list(
+  M0 = character(0),
+  M1 = c("tempo"),
+  M2 = c("tempo", "I(tempo^2)"),
+  M3 = c("tempo", "I(tempo^2)", "I(tempo^3)"),
+  M4 = c("tempo", "I(tempo^2)", "I(tempo^3)", "I(tempo^4)")
+)
+
+ajustes_tempo <- list(
+  M0 = ajustar_gee_nb(formulas_tempo$M0, dados, corstr = "Independence"),
+  M1 = ajustar_gee_nb(formulas_tempo$M1, dados, corstr = "Independence"),
+  M2 = ajustar_gee_nb(formulas_tempo$M2, dados, corstr = "Independence"),
+  M3 = ajustar_gee_nb(formulas_tempo$M3, dados, corstr = "Independence"),
+  M4 = ajustar_gee_nb(formulas_tempo$M4, dados, corstr = "Independence")
+)
+
+tabela_tempo <- imap_dfr(
+  ajustes_tempo,
+  function(ajuste, modelo) {
+    tibble(
+      modelo = modelo,
+      forma_temporal = rotulos_forma_tempo[[modelo]],
+      estrutura_media = estruturas_media_tempo[[modelo]],
+      qic = ajuste$qic,
+      qicu = ajuste$qicu,
+      theta = ajuste$theta
+    )
+  }
+)
+
+anova_tempo <- bind_rows(
+  extrair_anova_gee(ajustes_tempo$M0$gee, ajustes_tempo$M1$gee, "M0 vs M1"),
+  extrair_anova_gee(ajustes_tempo$M1$gee, ajustes_tempo$M2$gee, "M1 vs M2"),
+  extrair_anova_gee(ajustes_tempo$M2$gee, ajustes_tempo$M3$gee, "M2 vs M3"),
+  extrair_anova_gee(ajustes_tempo$M3$gee, ajustes_tempo$M4$gee, "M3 vs M4")
+)
+
+modelo_tempo_escolhido <- "M0"
+for (i in seq_len(nrow(anova_tempo))) {
+  if (is.finite(anova_tempo$p_valor[[i]]) && anova_tempo$p_valor[[i]] < 0.05) {
+    modelo_tempo_escolhido <- c("M1", "M2", "M3", "M4")[i]
+  } else {
+    break
+  }
+}
+
+termos_tempo_modelagem <- termos_tempo_por_modelo[[modelo_tempo_escolhido]]
+formula_tempo_escolhida <- formulas_tempo[[modelo_tempo_escolhido]]
+
+print(superdispersao_bruta)
+print(superdispersao_poisson)
+print(tabela_tempo)
+print(anova_tempo)
+cat("Modelo temporal selecionado:", modelo_tempo_escolhido, "\n")
+cat("Termos do tempo:", paste(termos_tempo_modelagem, collapse = " + "), "\n")
+```
+
+# 3. Estrutura de correlacao
+
+```{r correlacao}
+# Comparacao das estruturas de correlacao depois de fixar a forma do tempo
+ajustes_correlacao <- list(
+  Independence = ajustar_gee_nb(formula_tempo_escolhida, dados, corstr = "Independence"),
+  Exchangeable = ajustar_gee_nb(formula_tempo_escolhida, dados, corstr = "Exchangeable"),
+  `AR-M-dependent(1)` = ajustar_gee_nb(formula_tempo_escolhida, dados, corstr = "AR-M-dependent(1)")
+)
+
+tabela_correlacao <- imap_dfr(
+  ajustes_correlacao,
+  function(ajuste, corstr) {
+    tibble(
+      corstr = corstr,
+      cic = ajuste$cic,
+      qic = ajuste$qic,
+      qicu = ajuste$qicu,
+      theta = ajuste$theta,
+      theta_se = ajuste$theta_se
+    )
+  }
+) %>%
+  arrange(cic, qic, qicu)
+
+corstr_escolhida <- "Exchangeable"
+
+print(tabela_correlacao)
+cat("Estrutura de correlacao adotada:", corstr_escolhida, "\n")
+```
+
+# 4. Modelos isolados por bloco
+
+```{r isolados}
+# Ajustes isolados das covariaveis candidatas
+isolados_blocos <- map_dfr(
+  variaveis_ativas_blocos,
+  function(var) {
+    formula_var <- montar_formula_modelagem(
+      covariaveis = var,
+      termos_tempo = termos_tempo_modelagem
+    )
+    ajuste_var <- ajustar_gee_nb(formula_var, dados, corstr = corstr_escolhida)
+    coef_var <- resumo_coeficientes_gee(ajuste_var$gee) %>%
+      filter(termo == var) %>%
+      slice(1)
+
+    bloco_atual <- names(blocos_variaveis)[map_lgl(blocos_variaveis, ~ var %in% .x)]
+
+    tibble(
+      bloco = bloco_atual,
+      variavel = var,
+      rotulo = rotulos_variaveis[[var]],
+      estimativa = coef_var$estimativa,
+      erro_padrao = coef_var$erro_padrao,
+      z_wald = coef_var$z_wald,
+      p_valor = coef_var$p_valor,
+      irr = coef_var$irr,
+      ic95_irr_inf = coef_var$ic95_irr_inf,
+      ic95_irr_sup = coef_var$ic95_irr_sup,
+      qic = ajuste_var$qic,
+      qicu = ajuste_var$qicu,
+      theta = ajuste_var$theta,
+      significativa_isolada_5 = coef_var$p_valor < 0.05
+    )
+  }
+) %>%
+  arrange(bloco, qic, qicu, variavel)
+
+isolados_contexto <- isolados_blocos %>% filter(bloco == "contexto_socioeconomico")
+isolados_seguranca <- isolados_blocos %>% filter(bloco == "seguranca_publica")
+isolados_territorial <- isolados_blocos %>% filter(bloco == "dominio_territorial")
+
+print(isolados_contexto)
+print(isolados_seguranca)
+print(isolados_territorial)
+```
+
+# 5. Triagem de correlacao e modelo aditivo
+
+```{r triagem-aditivo}
+# Conflito direto entre acao policial e tiroteio
+cor_tiroteio_acao <- correlacao_variaveis_modelagem(dados, c("tiroteio", "acao_policial"))
+
+linha_acao_policial <- isolados_seguranca %>%
+  filter(variavel == "acao_policial") %>%
+  slice(1)
+
+linha_tiroteio <- isolados_seguranca %>%
+  filter(variavel == "tiroteio") %>%
+  slice(1)
+
+preferida_bloco_seguranca <- case_when(
+  abs(unname(cor_tiroteio_acao["tiroteio", "acao_policial"])) > 0.7 ~ "acao_policial",
+  linha_acao_policial$qic[[1]] < linha_tiroteio$qic[[1]] ~ "acao_policial",
+  linha_tiroteio$qic[[1]] < linha_acao_policial$qic[[1]] ~ "tiroteio",
+  linha_acao_policial$qicu[[1]] <= linha_tiroteio$qicu[[1]] ~ "acao_policial",
+  TRUE ~ "tiroteio"
+)
+
+exclusoes_formais_colinearidade <- tibble(
+  variavel_1 = "acao_policial",
+  variavel_2 = "tiroteio",
+  correlacao = unname(cor_tiroteio_acao["tiroteio", "acao_policial"]),
+  correlacao_abs = abs(correlacao),
+  qic_acao_policial = linha_acao_policial$qic[[1]],
+  qic_tiroteio = linha_tiroteio$qic[[1]],
+  preferida = preferida_bloco_seguranca
+)
+
+retencao_blocos <- isolados_blocos %>%
+  mutate(
+    retida_preliminar_bloco = case_when(
+      bloco == "seguranca_publica" &
+        significativa_isolada_5 &
+        variavel == preferida_bloco_seguranca ~ TRUE,
+      bloco == "seguranca_publica" &
+        variavel != preferida_bloco_seguranca ~ FALSE,
+      significativa_isolada_5 ~ TRUE,
+      TRUE ~ FALSE
+    )
+  )
+
+variaveis_significativas_isoladas <- retencao_blocos %>%
+  filter(retida_preliminar_bloco) %>%
+  pull(variavel)
+
+matriz_correlacao_candidatas <- correlacao_variaveis_modelagem(
+  dados,
+  variaveis_ativas_blocos
+)
+
+pares_significativos <- combn(variaveis_significativas_isoladas, 2, simplify = FALSE)
+pares_correlacionados <- map_dfr(
+  pares_significativos,
+  function(par) {
+    correlacao <- unname(matriz_correlacao_candidatas[par[1], par[2]])
+
+    if (!is.finite(correlacao) || abs(correlacao) <= 0.7) {
+      return(tibble())
+    }
+
+    qic_1 <- isolados_blocos$qic[match(par[1], isolados_blocos$variavel)]
+    qic_2 <- isolados_blocos$qic[match(par[2], isolados_blocos$variavel)]
+    qicu_1 <- isolados_blocos$qicu[match(par[1], isolados_blocos$variavel)]
+    qicu_2 <- isolados_blocos$qicu[match(par[2], isolados_blocos$variavel)]
+
+    preferida <- if (qic_1 < qic_2 || (abs(qic_1 - qic_2) < 1e-8 && qicu_1 <= qicu_2)) {
+      par[1]
+    } else {
+      par[2]
+    }
+
+    tibble(
+      variavel_1 = par[1],
+      variavel_2 = par[2],
+      correlacao = correlacao,
+      correlacao_abs = abs(correlacao),
+      preferida_qic = preferida
+    )
+  }
+)
+
+candidatas_globais <- isolados_blocos %>%
+  filter(variavel %in% variaveis_significativas_isoladas) %>%
+  arrange(qic, qicu, variavel)
+
+selecionadas_global <- character(0)
+triagem_lista <- list()
+
+for (i in seq_len(nrow(candidatas_globais))) {
+  variavel_atual <- candidatas_globais$variavel[[i]]
+
+  conflitos <- selecionadas_global[
+    map_lgl(
+      selecionadas_global,
+      ~ {
+        correlacao <- matriz_correlacao_candidatas[variavel_atual, .x]
+        is.finite(correlacao) && abs(correlacao) > 0.7
+      }
+    )
+  ]
+
+  manter <- length(conflitos) == 0
+  if (manter) {
+    selecionadas_global <- c(selecionadas_global, variavel_atual)
+  }
+
+  triagem_lista[[i]] <- candidatas_globais[i, ] %>%
+    mutate(
+      ordem_qic_significativas = i,
+      decisao_correlacao = if_else(manter, "retida", "excluida_por_correlacao"),
+      conflito_com = if (length(conflitos) == 0) NA_character_ else paste(conflitos, collapse = " + "),
+      retida_apos_correlacao = manter
+    )
+}
+
+triagem_correlacao <- bind_rows(triagem_lista)
+covariaveis_modelo_inicial <- selecionadas_global
+
+# Simplificacao do modelo conjunto por p-valor
+covariaveis_atuais <- covariaveis_modelo_inicial
+historico_simplificacao <- list()
+etapa <- 1
+
+repeat {
+  formula_atual <- montar_formula_modelagem(
+    covariaveis = covariaveis_atuais,
+    termos_tempo = termos_tempo_modelagem
+  )
+  ajuste_atual <- ajustar_gee_nb(formula_atual, dados, corstr = corstr_escolhida)
+  coeficientes_atuais <- resumo_coeficientes_gee(ajuste_atual$gee)
+
+  coef_covariaveis <- coeficientes_atuais %>%
+    filter(termo %in% covariaveis_atuais) %>%
+    arrange(desc(p_valor), termo)
+
+  todos_significativos <- if (nrow(coef_covariaveis) == 0) {
+    TRUE
+  } else {
+    all(is.finite(coef_covariaveis$p_valor) & coef_covariaveis$p_valor < 0.05)
+  }
+
+  termo_removido <- if (todos_significativos) NA_character_ else coef_covariaveis$termo[[1]]
+  p_valor_removido <- if (todos_significativos) NA_real_ else coef_covariaveis$p_valor[[1]]
+
+  historico_simplificacao[[etapa]] <- tibble(
+    etapa = etapa,
+    formula = formatar_formula_modelagem(formula_atual),
+    qic = ajuste_atual$qic,
+    qicu = ajuste_atual$qicu,
+    cic = ajuste_atual$cic,
+    theta = ajuste_atual$theta,
+    termo_removido = termo_removido,
+    p_valor_termo_removido = p_valor_removido,
+    todos_significativos_5 = todos_significativos
+  )
+
+  if (todos_significativos) {
+    break
+  }
+
+  covariaveis_atuais <- setdiff(covariaveis_atuais, termo_removido)
+  etapa <- etapa + 1
+}
+
+simplificacao_modelo <- bind_rows(historico_simplificacao)
+covariaveis_modelo_final <- covariaveis_atuais
+formula_modelo_aditivo <- montar_formula_modelagem(
+  covariaveis = covariaveis_modelo_final,
+  termos_tempo = termos_tempo_modelagem
+)
+ajuste_modelo_aditivo <- ajustar_gee_nb(
+  formula_modelo_aditivo,
+  dados,
+  corstr = corstr_escolhida
+)
+coeficientes_modelo_aditivo <- resumo_coeficientes_gee(ajuste_modelo_aditivo$gee)
+
+print(exclusoes_formais_colinearidade)
+print(retencao_blocos)
+print(pares_correlacionados)
+print(triagem_correlacao)
+print(simplificacao_modelo)
+print(coeficientes_modelo_aditivo)
+cat("Covariaveis do modelo aditivo final:", paste(covariaveis_modelo_final, collapse = ", "), "\n")
+```
+
+# 6. Interacoes e modelo final adotado no TCC
+
+```{r interacoes-modelo-final}
+# Teste estrutural de renda x populacao
+formula_renda_pop <- montar_formula_modelagem(
+  covariaveis = covariaveis_modelo_final,
+  termos_tempo = termos_tempo_modelagem,
+  termos_extras = "pop_total:renda"
+)
+
+ajuste_renda_pop <- ajustar_gee_nb(
+  formula_renda_pop,
+  dados,
+  corstr = corstr_escolhida
+)
+
+coef_renda_pop <- resumo_coeficientes_gee(ajuste_renda_pop$gee)
+anova_renda_pop <- as.data.frame(anova(ajuste_modelo_aditivo$gee, ajuste_renda_pop$gee))
+coef_termo_renda_pop <- coef_renda_pop %>%
+  filter(termo %in% c("pop_total:renda", "renda:pop_total"))
+
+comparacao_renda_pop <- tibble(
+  formula_base = formatar_formula_modelagem(formula_modelo_aditivo),
+  formula_interacao = formatar_formula_modelagem(formula_renda_pop),
+  qic_base = ajuste_modelo_aditivo$qic,
+  qic_interacao = ajuste_renda_pop$qic,
+  chi2 = as.numeric(anova_renda_pop[[1]][1]),
+  gl = as.numeric(anova_renda_pop[[2]][1]),
+  p_valor = as.numeric(anova_renda_pop[[3]][1]),
+  p_valor_termo_interacao = coef_termo_renda_pop$p_valor[[1]]
+)
+
+# Base das interacoes temporais
+formula_base_interacoes <- formula_modelo_aditivo
+ajuste_base_interacoes <- ajuste_modelo_aditivo
+coef_base_interacoes <- coeficientes_modelo_aditivo
+
+variaveis_interacao_retidas <- intersect(
+  c("acao_policial", "tiroteio", "milicia"),
+  covariaveis_modelo_final
+)
+
+ordens_interacao_tempo <- construir_ordens_interacao_tempo(termos_tempo_modelagem)
+teste_interacao <- tibble()
+coeficientes_interacoes_candidatas <- tibble()
+
+for (variavel_interacao in variaveis_interacao_retidas) {
+  for (ordem in names(ordens_interacao_tempo)) {
+    termos_interacao_ordem <- ordens_interacao_tempo[[ordem]]
+
+    formula_interacao <- montar_formula_modelagem(
+      covariaveis = covariaveis_modelo_final,
+      termos_tempo = termos_tempo_modelagem,
+      variavel_interacao = variavel_interacao,
+      termos_interacao = termos_interacao_ordem
+    )
+
+    ajuste_interacao <- ajustar_gee_nb(
+      formula_interacao,
+      dados,
+      corstr = corstr_escolhida
+    )
+
+    coef_interacao <- resumo_coeficientes_gee(ajuste_interacao$gee)
+    teste_wald_interacao <- as.data.frame(anova(ajuste_base_interacoes$gee, ajuste_interacao$gee))
+
+    termos_interacao_nomes <- unique(c(
+      paste0(variavel_interacao, ":", termos_interacao_ordem),
+      paste0(termos_interacao_ordem, ":", variavel_interacao)
+    ))
+
+    coef_termos_interacao <- coef_interacao %>%
+      filter(termo %in% termos_interacao_nomes)
+
+    teste_interacao <- bind_rows(
+      teste_interacao,
+      tibble(
+        variavel = variavel_interacao,
+        ordem_interacao = ordem,
+        formula_interacao = formatar_formula_modelagem(formula_interacao),
+        qic_base = ajuste_base_interacoes$qic,
+        qic_interacao = ajuste_interacao$qic,
+        qicu_interacao = ajuste_interacao$qicu,
+        cic_interacao = ajuste_interacao$cic,
+        chi2 = as.numeric(teste_wald_interacao[[1]][1]),
+        gl = as.numeric(teste_wald_interacao[[2]][1]),
+        p_valor = as.numeric(teste_wald_interacao[[3]][1]),
+        n_termos_interacao = length(termos_interacao_ordem),
+        n_termos_interacao_significativos_5 = sum(coef_termos_interacao$p_valor < 0.05, na.rm = TRUE)
+      )
+    )
+
+    coeficientes_interacoes_candidatas <- bind_rows(
+      coeficientes_interacoes_candidatas,
+      coef_interacao %>%
+        mutate(
+          variavel_interacao = variavel_interacao,
+          ordem_interacao = ordem
+        ) %>%
+        relocate(variavel_interacao, ordem_interacao)
+    )
+  }
+}
+
+# Modelo final adotado no TCC
+formula_modelo_final <- montar_formula_modelagem(
+  covariaveis = covariaveis_modelo_final,
+  termos_tempo = termos_tempo_modelagem,
+  variavel_interacao = "acao_policial",
+  termos_interacao = termos_tempo_modelagem
+)
+
+ajuste_modelo_final <- ajustar_gee_nb(
+  formula_modelo_final,
+  dados,
+  corstr = corstr_escolhida
+)
+
+coeficientes_modelo_final <- resumo_coeficientes_gee(ajuste_modelo_final$gee)
+teste_modelo_final <- teste_interacao %>%
+  filter(variavel == "acao_policial", ordem_interacao == "cubica")
+
+trajetoria_anual_modelo_final <- dados %>%
+  mutate(
+    ajustado = prever_media_modelagem(formula_modelo_final, ajuste_modelo_final$gee, dados)
+  ) %>%
+  group_by(ano, tempo) %>%
+  summarise(
+    observado_media = mean(n_mvi),
+    ajustado_media = mean(ajustado),
+    .groups = "drop"
+  )
+
+grafico_trajetoria_modelo_final <- trajetoria_anual_modelo_final %>%
+  pivot_longer(
+    cols = c(observado_media, ajustado_media),
+    names_to = "serie",
+    values_to = "mvi_media"
+  ) %>%
+  mutate(
+    serie = recode(
+      serie,
+      observado_media = "Observado",
+      ajustado_media = "Ajustado"
+    )
+  ) %>%
+  ggplot(aes(x = ano, y = mvi_media, color = serie, group = serie)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2.3) +
+  scale_x_continuous(breaks = 2019:2024) +
+  scale_color_manual(values = c("Observado" = "#1F2D3D", "Ajustado" = "#D94841")) +
+  labs(x = "Ano", y = "MVI media por bairro", color = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top", panel.grid.minor = element_blank())
+
+print(comparacao_renda_pop)
+print(teste_interacao)
+print(teste_modelo_final)
+print(coeficientes_modelo_final)
+grafico_trajetoria_modelo_final
+```
+
+# 7. Diagnostico do modelo final
+
+```{r diagnostico-modelo-final}
+# Residuos por observacao
+residuos_pearson <- as.numeric(stats::residuals(ajuste_modelo_final$gee, type = "pearson", plot.it = FALSE))
+residuos_desvio <- as.numeric(stats::residuals(ajuste_modelo_final$gee, type = "deviance", plot.it = FALSE))
+
+residuos_observacao <- dados %>%
+  mutate(
+    bairro = as.character(bairro),
+    valor_ajustado = as.numeric(ajuste_modelo_final$gee$fitted.values),
+    residuo_pearson = residuos_pearson,
+    residuo_desvio = residuos_desvio,
+    flag_abs_pearson_gt_3 = abs(residuo_pearson) > 3,
+    flag_abs_desvio_gt_3 = abs(residuo_desvio) > 3
+  )
+
+resumo_residuos_observacao <- bind_rows(
+  resumo_vetor(residuos_pearson) %>%
+    mutate(tipo = "pearson", proporcao_abs_maior_que_3 = mean(abs(residuos_pearson) > 3)),
+  resumo_vetor(residuos_desvio) %>%
+    mutate(tipo = "deviance", proporcao_abs_maior_que_3 = mean(abs(residuos_desvio) > 3))
+) %>%
+  relocate(tipo)
+
+# Residuos de Pearson por bairro e ano
+residuos_pearson_tempo_bairro <- dados %>%
+  mutate(
+    bairro = as.character(bairro),
+    valor_ajustado = as.numeric(ajuste_modelo_final$gee$fitted.values),
+    residuo_pearson = residuos_pearson
+  ) %>%
+  dplyr::select(bairro, ano, tempo, n_mvi, valor_ajustado, residuo_pearson)
+
+resumo_residuos_pearson_tempo <- residuos_pearson_tempo_bairro %>%
+  group_by(ano, tempo) %>%
+  summarise(
+    n = n(),
+    media = mean(residuo_pearson),
+    desvio_padrao = stats::sd(residuo_pearson),
+    mediana = stats::median(residuo_pearson),
+    q1 = as.numeric(stats::quantile(residuo_pearson, probs = 0.25, names = FALSE)),
+    q3 = as.numeric(stats::quantile(residuo_pearson, probs = 0.75, names = FALSE)),
+    proporcao_abs_maior_que_3 = mean(abs(residuo_pearson) > 3),
+    .groups = "drop"
+  )
+
+# Residuos padronizados de Pearson
+alavancagem_obs <- as.numeric(glmtoolbox::leverage(ajuste_modelo_final$gee, level = "observations"))
+residuos_padronizados_pearson <- tibble(
+  indice_observacao = seq_len(nrow(dados)),
+  bairro = as.character(dados$bairro),
+  ano = as.numeric(dados$ano),
+  tempo = as.numeric(dados$tempo),
+  n_mvi = as.numeric(dados$n_mvi),
+  valor_ajustado = as.numeric(ajuste_modelo_final$gee$fitted.values),
+  residuo_pearson = residuos_pearson,
+  leverage = alavancagem_obs,
+  residuo_padronizado_pearson =
+    residuos_pearson / sqrt(pmax(1 - alavancagem_obs, .Machine$double.eps)),
+  flag_abs_maior_que_3 =
+    abs(residuo_pearson / sqrt(pmax(1 - alavancagem_obs, .Machine$double.eps))) > 3
+)
+
+resumo_residuos_padronizados_pearson <- residuos_padronizados_pearson %>%
+  summarise(
+    n = n(),
+    media = mean(residuo_padronizado_pearson, na.rm = TRUE),
+    desvio_padrao = stats::sd(residuo_padronizado_pearson, na.rm = TRUE),
+    minimo = min(residuo_padronizado_pearson, na.rm = TRUE),
+    q1 = as.numeric(stats::quantile(residuo_padronizado_pearson, probs = 0.25, names = FALSE)),
+    mediana = stats::median(residuo_padronizado_pearson, na.rm = TRUE),
+    q3 = as.numeric(stats::quantile(residuo_padronizado_pearson, probs = 0.75, names = FALSE)),
+    maximo = max(residuo_padronizado_pearson, na.rm = TRUE),
+    proporcao_absoluta_maior_que_3 = mean(abs(residuo_padronizado_pearson) > 3),
+    n_acima_3 = sum(flag_abs_maior_que_3, na.rm = TRUE)
+  )
+
+residuos_extremos_pearson <- residuos_padronizados_pearson %>%
+  filter(flag_abs_maior_que_3) %>%
+  arrange(desc(abs(residuo_padronizado_pearson)), bairro, ano) %>%
+  slice_head(n = 20)
+
+print(resumo_residuos_observacao)
+print(resumo_residuos_pearson_tempo)
+print(resumo_residuos_padronizados_pearson)
+print(residuos_extremos_pearson)
+```
+
+```{r graficos-diagnostico, echo=FALSE}
+g1 <- ggplot(
+  residuos_observacao,
+  aes(x = valor_ajustado, y = residuo_pearson)
+) +
+  geom_point(color = "#1B1B1B", alpha = 0.45, size = 1.3) +
+  geom_hline(yintercept = c(-3, 0, 3), linetype = c("dashed", "solid", "dashed"), color = c("#4D4D4D", "#B8C0C2", "#4D4D4D")) +
+  labs(
+    title = "Residuos de Pearson vs valores ajustados do modelo final",
+    x = "Valores ajustados",
+    y = "Residuo de Pearson"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank())
+
+bairros_destaque_pearson <- residuos_padronizados_pearson %>%
+  filter(flag_abs_maior_que_3) %>%
+  distinct(bairro) %>%
+  arrange(bairro) %>%
+  pull(bairro)
+
+dados_plot_pearson <- residuos_pearson_tempo_bairro %>%
+  mutate(
+    grupo_legenda = if_else(
+      bairro %in% bairros_destaque_pearson,
+      as.character(bairro),
+      "Demais bairros"
+    ),
+    grupo_legenda = factor(grupo_legenda, levels = c("Demais bairros", bairros_destaque_pearson))
+  )
+
+cores_destaques <- if (length(bairros_destaque_pearson) > 0) {
+  stats::setNames(
+    grDevices::hcl.colors(length(bairros_destaque_pearson), palette = "Dark 3"),
+    bairros_destaque_pearson
+  )
+} else {
+  character(0)
+}
+
+g2 <- ggplot(
+  dados_plot_pearson,
+  aes(
+    x = ano,
+    y = residuo_pearson,
+    group = bairro,
+    color = grupo_legenda,
+    alpha = grupo_legenda,
+    linewidth = grupo_legenda
+  )
+) +
+  geom_hline(yintercept = c(-3, 3), linetype = "dashed", color = "#B03A2E", linewidth = 0.45, alpha = 0.7) +
+  geom_line() +
+  geom_point(size = 1.2) +
+  scale_color_manual(values = c("Demais bairros" = "#1F78B4", cores_destaques), drop = FALSE) +
+  scale_alpha_manual(values = c("Demais bairros" = 0.20, stats::setNames(rep(0.95, length(bairros_destaque_pearson)), bairros_destaque_pearson)), drop = FALSE) +
+  scale_linewidth_manual(values = c("Demais bairros" = 0.42, stats::setNames(rep(0.95, length(bairros_destaque_pearson)), bairros_destaque_pearson)), drop = FALSE) +
+  scale_x_continuous(breaks = 2019:2024) +
+  labs(x = "Ano", y = "Residuo de Pearson", color = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "right") +
+  guides(alpha = "none", linewidth = "none")
+
+g1
+g2
+```
+
+# 8. Sensibilidade por distancia de Cook
+
+## 8.1 DCLS e DBETACS no formato de Preisser e Qaqish
+
+```{r cook-distancia}
+# Diagnosticos de cluster seguindo Preisser e Qaqish com variancia model-based
+termos_modelo_final_cook <- coeficientes_modelo_final$termo
+termos_sem_intercepto_cook <- setdiff(termos_modelo_final_cook, "(Intercept)")
+
+vcov_model_based_cook <- stats::vcov(ajuste_modelo_final$gee, type = "model")
+rownames(vcov_model_based_cook) <- termos_modelo_final_cook
+colnames(vcov_model_based_cook) <- termos_modelo_final_cook
+erro_padrao_model_based_cook <- sqrt(diag(vcov_model_based_cook))
+
+dcls_aprox_bruto <- stats::cooks.distance(
+  ajuste_modelo_final$gee,
+  method = "Preisser-Qaqish",
+  level = "clusters",
+  plot.it = FALSE,
+  varest = "model"
+)
+
+leverage_clusters_bruta <- as.numeric(
+  glmtoolbox::leverage(
+    ajuste_modelo_final$gee,
+    level = "clusters",
+    plot.it = FALSE
+  )
+)
+
+dbetac_aprox_bruto <- as.matrix(
+  stats::dfbeta(
+    ajuste_modelo_final$gee,
+    method = "Preisser-Qaqish",
+    level = "clusters"
+  )
+)
+
+colnames(dbetac_aprox_bruto) <- termos_modelo_final_cook
+
+ids_clusters <- rownames(dbetac_aprox_bruto)
+
+if (is.null(ids_clusters) || any(is.na(ids_clusters)) || any(ids_clusters == "")) {
+  ids_clusters <- names(dcls_aprox_bruto)
+}
+
+if (is.null(ids_clusters) || any(is.na(ids_clusters)) || any(ids_clusters == "")) {
+  ids_clusters <- as.character(unique(ajuste_modelo_final$gee$ids))
+}
+
+ids_clusters <- as.character(ids_clusters)
+rownames(dbetac_aprox_bruto) <- ids_clusters
+
+dbetacs_clusters_aprox <- sweep(
+  dbetac_aprox_bruto,
+  2,
+  erro_padrao_model_based_cook,
+  "/"
+)
+
+tamanho_clusters <- dados %>%
+  count(bairro, name = "cluster_size") %>%
+  mutate(bairro = as.character(bairro))
+
+dbetacs_longo <- tibble::rownames_to_column(
+  as.data.frame(dbetacs_clusters_aprox),
+  var = "bairro"
+) %>%
+  as_tibble() %>%
+  pivot_longer(
+    cols = -bairro,
+    names_to = "termo",
+    values_to = "dbetacs"
+  ) %>%
+  filter(termo != "(Intercept)") %>%
+  mutate(
+    termo = factor(termo, levels = termos_sem_intercepto_cook),
+    flag_abs_dbetacs_maior_1 = abs(dbetacs) >= 1
+  )
+
+dbetacs_resumo_aprox <- dbetacs_longo %>%
+  group_by(bairro) %>%
+  summarise(
+    max_abs_dbetacs = max(abs(dbetacs), na.rm = TRUE),
+    termo_max_abs_dbetacs = as.character(termo[which.max(abs(dbetacs))]),
+    dbetacs_termo_max = dbetacs[which.max(abs(dbetacs))],
+    .groups = "drop"
+  )
+
+distancia_cook <- tibble(
+  bairro = ids_clusters,
+  dcls = as.numeric(dcls_aprox_bruto),
+  leverage_cluster = leverage_clusters_bruta
+) %>%
+  left_join(tamanho_clusters, by = "bairro") %>%
+  left_join(dbetacs_resumo_aprox, by = "bairro") %>%
+  mutate(
+    flag_dcls_maior_1 = dcls >= 1,
+    flag_dbetacs_maior_1 = max_abs_dbetacs >= 1,
+    flag_influente = flag_dcls_maior_1 | flag_dbetacs_maior_1
+  ) %>%
+  arrange(cluster_size, bairro) %>%
+  group_by(cluster_size) %>%
+  mutate(
+    cluster_size_plot = if (n() == 1) {
+      cluster_size
+    } else {
+      cluster_size + seq(-0.18, 0.18, length.out = n())
+    }
+  ) %>%
+  ungroup() %>%
+  mutate(
+    bairro_ordem_plot = factor(
+      bairro,
+      levels = unique(as.character(dados$bairro))
+    ),
+    rotulo_dcls = if_else(flag_influente, bairro, NA_character_)
+  )
+
+dbetacs_longo <- dbetacs_longo %>%
+  left_join(
+    distancia_cook %>%
+      dplyr::select(bairro, cluster_size, leverage_cluster, flag_influente),
+    by = "bairro"
+  ) %>%
+  mutate(
+    bairro_ordem_plot = factor(
+      bairro,
+      levels = unique(as.character(dados$bairro))
+    ),
+    rotulo_dbetacs = if_else(flag_abs_dbetacs_maior_1, bairro, NA_character_)
+  ) %>%
+  ungroup()
+
+bairros_influentes <- distancia_cook %>%
+  filter(flag_influente) %>%
+  arrange(desc(dcls), desc(max_abs_dbetacs), bairro)
+
+tabela_distancia_cook_resumo <- distancia_cook %>%
+  transmute(
+    bairro,
+    cluster_size,
+    leverage_cluster,
+    dcls,
+    max_abs_dbetacs,
+    termo_max_abs_dbetacs,
+    dbetacs_termo_max,
+    flag_dcls_maior_1,
+    flag_dbetacs_maior_1,
+    flag_influente
+  )
+
+tabela_distancia_cook_exibicao <- if (nrow(bairros_influentes) > 0) {
+  tabela_distancia_cook_resumo %>%
+    filter(flag_influente) %>%
+    arrange(desc(dcls), desc(max_abs_dbetacs), bairro)
+} else {
+  tabela_distancia_cook_resumo %>%
+    arrange(desc(dcls), desc(max_abs_dbetacs), bairro) %>%
+    slice_head(n = 10)
+}
+
+dbetacs_influentes <- dbetacs_longo %>%
+  filter(flag_abs_dbetacs_maior_1) %>%
+  arrange(termo, desc(abs(dbetacs)), bairro)
+
+termos_distancia_cook_tcc <- intersect(
+  c("acao_policial", "pop_total", "milicia", "renda"),
+  as.character(termos_modelo_final_cook)
+)
+
+rotulos_termos_distancia_cook_tcc <- c(
+  acao_policial = "Acao policial",
+  pop_total = "Populacao total",
+  milicia = "Dominio milicia",
+  renda = "Renda"
+)
+
+rotulos_termos_modelagem_latex <- c(
+  "(Intercept)" = "Intercepto",
+  tempo = "Tempo",
+  "I(tempo^2)" = "Tempo$^2$",
+  "I(tempo^3)" = "Tempo$^3$",
+  acao_policial = "A\\c{c}\\~ao policial",
+  pop_total = "Popula\\c{c}\\~ao total",
+  milicia = "Dom\\'inio mil\\'icia",
+  renda = "Renda",
+  "tempo:acao_policial" = "Tempo $\\times$ A\\c{c}\\~ao policial",
+  "I(tempo^2):acao_policial" = "Tempo$^2$ $\\times$ A\\c{c}\\~ao policial",
+  "I(tempo^3):acao_policial" = "Tempo$^3$ $\\times$ A\\c{c}\\~ao policial"
+)
+
+dir_artefatos_cook <- dir_figuras
+dir_tabelas_cook <- dir_tabelas
+
+dbetacs_longo_tcc <- dbetacs_longo %>%
+  filter(as.character(termo) %in% termos_distancia_cook_tcc) %>%
+  mutate(
+    termo = factor(as.character(termo), levels = termos_distancia_cook_tcc),
+    rotulo_termo = unname(rotulos_termos_distancia_cook_tcc[as.character(termo)])
+  )
+
+dbetacs_influentes_tcc <- dbetacs_longo_tcc %>%
+  filter(flag_abs_dbetacs_maior_1) %>%
+  arrange(termo, desc(abs(dbetacs)), bairro)
+
+cat("Estrutura de correlacao do modelo final:", corstr_escolhida, "\n")
+cat("Numero de bairros com DCLS >= 1:", sum(distancia_cook$flag_dcls_maior_1, na.rm = TRUE), "\n")
+cat("Numero de bairros com |DBETACS| >= 1:", sum(distancia_cook$flag_dbetacs_maior_1, na.rm = TRUE), "\n")
+cat("Numero de bairros influentes pela uniao dos cortes:", nrow(bairros_influentes), "\n")
+
+if (nrow(bairros_influentes) == 0) {
+  cat("Nenhum bairro ultrapassou os cortes de DCLS ou |DBETACS|.\n")
+} else {
+  cat("Bairros influentes:", paste(bairros_influentes$bairro, collapse = ", "), "\n")
+}
+
+print(tabela_distancia_cook_exibicao)
+print(dbetacs_influentes_tcc)
+```
+
+```{r grafico-cook-dcls-bairro, echo=FALSE}
+grafico_distancia_cook_dcls_bairro <- ggplot(
+  distancia_cook,
+  aes(x = bairro_ordem_plot, y = dcls, color = flag_influente)
+) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "#B03A2E", linewidth = 0.6) +
+  geom_point(size = 1.8, alpha = 0.85) +
+  geom_text(
+    data = distancia_cook %>% filter(flag_influente),
+    aes(label = bairro),
+    size = 2.8,
+    check_overlap = TRUE,
+    nudge_y = 0.04
+  ) +
+  scale_color_manual(values = c("FALSE" = "#1F78B4", "TRUE" = "#B03A2E"), guide = "none") +
+  labs(
+    x = "Bairros",
+    y = "DCLS"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+
+print(grafico_distancia_cook_dcls_bairro)
+```
+
+```{r grafico-cook-dbetacs, echo=FALSE}
+graficos_dbetacs_cook <- list()
+
+for (termo_atual in termos_distancia_cook_tcc) {
+  dados_grafico_dbetacs <- dbetacs_longo_tcc %>%
+    filter(as.character(termo) == termo_atual)
+
+  rotulo_termo_atual <- rotulos_termos_distancia_cook_tcc[[termo_atual]]
+
+  grafico_dbetacs_atual <- ggplot(
+    dados_grafico_dbetacs,
+    aes(x = bairro_ordem_plot, y = dbetacs, color = flag_abs_dbetacs_maior_1)
+  ) +
+    geom_hline(yintercept = c(-1, 1), linetype = "dashed", color = "#B03A2E", linewidth = 0.5) +
+    geom_hline(yintercept = 0, color = "#B8C0C2", linewidth = 0.4) +
+    geom_point(size = 1.5, alpha = 0.85) +
+    geom_text(
+      data = dados_grafico_dbetacs %>% filter(flag_abs_dbetacs_maior_1),
+      aes(label = bairro),
+      size = 2.6,
+      check_overlap = TRUE,
+      nudge_y = 0.08
+    ) +
+    scale_color_manual(values = c("FALSE" = "#1F78B4", "TRUE" = "#B03A2E"), guide = "none") +
+    labs(
+      x = "Bairros",
+      y = "DBETACS"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    )
+
+  graficos_dbetacs_cook[[termo_atual]] <- grafico_dbetacs_atual
+  print(grafico_dbetacs_atual)
+}
+```
+
+```{r grafico-cook-contexto-tamanho, echo=FALSE}
+grafico_distancia_cook_contexto_tamanho <- ggplot(
+  distancia_cook,
+  aes(x = cluster_size_plot, y = dcls, color = flag_influente)
+) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "#B03A2E", linewidth = 0.5) +
+  geom_point(size = 1.8, alpha = 0.85) +
+  geom_text(
+    data = distancia_cook %>% filter(flag_influente),
+    aes(label = bairro),
+    size = 2.8,
+    check_overlap = TRUE,
+    nudge_y = 0.03
+  ) +
+  scale_color_manual(values = c("FALSE" = "#1F78B4", "TRUE" = "#B03A2E"), guide = "none") +
+  scale_x_continuous(breaks = sort(unique(distancia_cook$cluster_size))) +
+  labs(
+    x = "Tamanho do cluster",
+    y = "DCLS"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+print(grafico_distancia_cook_contexto_tamanho)
+```
+
+```{r grafico-cook-contexto-leverage, echo=FALSE}
+grafico_distancia_cook_contexto_leverage <- ggplot(
+  distancia_cook,
+  aes(x = leverage_cluster, y = dcls, color = flag_influente)
+) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "#B03A2E", linewidth = 0.5) +
+  geom_point(size = 1.8, alpha = 0.85) +
+  geom_text(
+    data = distancia_cook %>% filter(flag_influente),
+    aes(label = bairro),
+    size = 2.8,
+    check_overlap = TRUE,
+    nudge_y = 0.03
+  ) +
+  scale_color_manual(values = c("FALSE" = "#1F78B4", "TRUE" = "#B03A2E"), guide = "none") +
+  labs(
+    x = "Alavancagem do bairro",
+    y = "DCLS"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+print(grafico_distancia_cook_contexto_leverage)
+```
+
+```{r grafico-cook-contexto-tamanho-leverage, echo=FALSE}
+grafico_distancia_cook_contexto_tamanho_leverage <- ggplot(
+  distancia_cook,
+  aes(x = cluster_size_plot, y = leverage_cluster, color = flag_influente)
+) +
+  geom_point(size = 1.8, alpha = 0.85) +
+  geom_text(
+    data = distancia_cook %>% filter(flag_influente),
+    aes(label = bairro),
+    size = 2.8,
+    check_overlap = TRUE,
+    nudge_y = 0.02
+  ) +
+  scale_color_manual(values = c("FALSE" = "#1F78B4", "TRUE" = "#B03A2E"), guide = "none") +
+  scale_x_continuous(breaks = sort(unique(distancia_cook$cluster_size))) +
+  labs(
+    x = "Tamanho do cluster",
+    y = "Alavancagem do bairro"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+print(grafico_distancia_cook_contexto_tamanho_leverage)
+```
+
+## 8.2 Reestimacao do modelo final sem os bairros influentes
+
+```{r cook-refit}
+formula_modelo_pos_cook <- formula_modelo_final
+
+dados_modelo_pos_cook <- dados %>%
+  filter(!(as.character(bairro) %in% bairros_influentes$bairro))
+
+if (nrow(bairros_influentes) == 0) {
+  ajuste_modelo_pos_cook <- ajuste_modelo_final
+  coeficientes_modelo_pos_cook <- coeficientes_modelo_final
+  rotulo_modelo_pos_cook <- "Modelo original sem exclusões"
+} else {
+  ajuste_modelo_pos_cook <- ajustar_gee_nb(
+    formula_modelo_pos_cook,
+    dados_modelo_pos_cook,
+    corstr = corstr_escolhida
+  )
+
+  coeficientes_modelo_pos_cook <- resumo_coeficientes_gee(ajuste_modelo_pos_cook$gee)
+  rotulo_modelo_pos_cook <- "Modelo sem bairros influentes"
+}
+
+residuos_pearson_pos_cook <- dados_modelo_pos_cook %>%
+  mutate(
+    bairro = as.character(bairro),
+    valor_ajustado = as.numeric(ajuste_modelo_pos_cook$gee$fitted.values),
+    residuo_pearson = as.numeric(stats::residuals(ajuste_modelo_pos_cook$gee, type = "pearson", plot.it = FALSE))
+  ) %>%
+  dplyr::select(bairro, ano, tempo, n_mvi, valor_ajustado, residuo_pearson)
+
+if (nrow(bairros_influentes) == 0) {
+  cat("Nenhum bairro foi excluido; os cortes de DCLS e |DBETACS| nao foram ultrapassados.\n")
+} else {
+  cat("Modelo final reestimado apos excluir os bairros influentes.\n")
+}
+print(
+  tibble(
+    modelo = rotulo_modelo_pos_cook,
+    formula = formatar_formula_modelagem(formula_modelo_pos_cook),
+    n_bairros = n_distinct(dados_modelo_pos_cook$bairro),
+    n_observacoes = nrow(dados_modelo_pos_cook),
+    n_bairros_removidos = nrow(bairros_influentes),
+    theta = ajuste_modelo_pos_cook$theta,
+    cic = ajuste_modelo_pos_cook$cic,
+    qic = ajuste_modelo_pos_cook$qic,
+    qicu = ajuste_modelo_pos_cook$qicu
+  )
+)
+print(coeficientes_modelo_pos_cook)
+```
+
+## 8.3 Comparacao entre o modelo original e o modelo sem bairros influentes
+
+```{r cook-comparacao}
+resumo_modelos_cook <- bind_rows(
+  tibble(
+    modelo = "Modelo original",
+    formula = formatar_formula_modelagem(formula_modelo_final),
+    corstr = corstr_escolhida,
+    n_bairros = n_distinct(dados$bairro),
+    n_observacoes = nrow(dados),
+    n_bairros_removidos = 0,
+    theta = ajuste_modelo_final$theta,
+    cic = ajuste_modelo_final$cic,
+    qic = ajuste_modelo_final$qic,
+    qicu = ajuste_modelo_final$qicu
+  ),
+  tibble(
+    modelo = rotulo_modelo_pos_cook,
+    formula = formatar_formula_modelagem(formula_modelo_pos_cook),
+    corstr = corstr_escolhida,
+    n_bairros = n_distinct(dados_modelo_pos_cook$bairro),
+    n_observacoes = nrow(dados_modelo_pos_cook),
+    n_bairros_removidos = nrow(bairros_influentes),
+    theta = ajuste_modelo_pos_cook$theta,
+    cic = ajuste_modelo_pos_cook$cic,
+    qic = ajuste_modelo_pos_cook$qic,
+    qicu = ajuste_modelo_pos_cook$qicu
+  )
+)
+
+resumo_residuos_cook <- bind_rows(
+  tibble(
+    modelo = "Modelo original",
+    n_observacoes = nrow(residuos_pearson_tempo_bairro),
+    minimo = min(residuos_pearson_tempo_bairro$residuo_pearson),
+    media = mean(residuos_pearson_tempo_bairro$residuo_pearson),
+    mediana = median(residuos_pearson_tempo_bairro$residuo_pearson),
+    maximo = max(residuos_pearson_tempo_bairro$residuo_pearson),
+    max_abs = max(abs(residuos_pearson_tempo_bairro$residuo_pearson)),
+    proporcao_abs_maior_que_3 = mean(abs(residuos_pearson_tempo_bairro$residuo_pearson) > 3),
+    n_observacoes_abs_maior_que_3 = sum(abs(residuos_pearson_tempo_bairro$residuo_pearson) > 3),
+    n_bairros_com_abs_maior_que_3 = n_distinct(residuos_pearson_tempo_bairro$bairro[abs(residuos_pearson_tempo_bairro$residuo_pearson) > 3])
+  ),
+  tibble(
+    modelo = rotulo_modelo_pos_cook,
+    n_observacoes = nrow(residuos_pearson_pos_cook),
+    minimo = min(residuos_pearson_pos_cook$residuo_pearson),
+    media = mean(residuos_pearson_pos_cook$residuo_pearson),
+    mediana = median(residuos_pearson_pos_cook$residuo_pearson),
+    maximo = max(residuos_pearson_pos_cook$residuo_pearson),
+    max_abs = max(abs(residuos_pearson_pos_cook$residuo_pearson)),
+    proporcao_abs_maior_que_3 = mean(abs(residuos_pearson_pos_cook$residuo_pearson) > 3),
+    n_observacoes_abs_maior_que_3 = sum(abs(residuos_pearson_pos_cook$residuo_pearson) > 3),
+    n_bairros_com_abs_maior_que_3 = n_distinct(residuos_pearson_pos_cook$bairro[abs(residuos_pearson_pos_cook$residuo_pearson) > 3])
+  )
+)
+
+comparacao_coeficientes_modelos_cook <- coeficientes_modelo_final %>%
+  dplyr::select(termo, estimativa, erro_padrao, p_valor, irr) %>%
+  rename(
+    estimativa_original = estimativa,
+    erro_padrao_original = erro_padrao,
+    p_valor_original = p_valor,
+    irr_original = irr
+  ) %>%
+  full_join(
+    coeficientes_modelo_pos_cook %>%
+      dplyr::select(termo, estimativa, erro_padrao, p_valor, irr) %>%
+      rename(
+        estimativa_sem_influentes = estimativa,
+        erro_padrao_sem_influentes = erro_padrao,
+        p_valor_sem_influentes = p_valor,
+        irr_sem_influentes = irr
+      ),
+    by = "termo"
+  )
+
+if (nrow(bairros_influentes) == 0) {
+  cat("Nao ha comparacao por exclusao: nenhum bairro foi classificado como influente.\n")
+} else {
+  cat("Comparacao entre o modelo original e o modelo sem bairros influentes.\n")
+}
+print(resumo_modelos_cook)
+print(comparacao_coeficientes_modelos_cook)
+print(resumo_residuos_cook)
+```
+
+```{r cook-exporta-artefatos, include=FALSE}
+dir.create(dir_artefatos_cook, recursive = TRUE, showWarnings = FALSE)
+
+formatar_numero_cook <- function(x, digits = 3) {
+  ifelse(
+    is.na(x),
+    "",
+    formatC(x, format = "f", digits = digits, decimal.mark = ",")
+  )
+}
+
+formatar_p_cook <- function(x) {
+  ifelse(
+    is.na(x),
+    "",
+    ifelse(x < 0.001, "< 0,001", formatar_numero_cook(x, digits = 4))
+  )
+}
+
+arquivo_figuras_cook <- c(
+  distancia_cook_dcls_bairro = file.path(dir_artefatos_cook, "distancia_cook_dcls_bairro.pdf"),
+  distancia_cook_dbetacs_acao_policial = file.path(dir_artefatos_cook, "distancia_cook_dbetacs_acao_policial.pdf"),
+  distancia_cook_dbetacs_pop_total = file.path(dir_artefatos_cook, "distancia_cook_dbetacs_pop_total.pdf"),
+  distancia_cook_dbetacs_milicia = file.path(dir_artefatos_cook, "distancia_cook_dbetacs_milicia.pdf"),
+  distancia_cook_dbetacs_renda = file.path(dir_artefatos_cook, "distancia_cook_dbetacs_renda.pdf"),
+  distancia_cook_dcls_tamanho_bairro = file.path(dir_artefatos_cook, "distancia_cook_dcls_tamanho_bairro.pdf"),
+  distancia_cook_dcls_alavancagem_bairro = file.path(dir_artefatos_cook, "distancia_cook_dcls_alavancagem_bairro.pdf"),
+  distancia_cook_alavancagem_tamanho_bairro = file.path(dir_artefatos_cook, "distancia_cook_alavancagem_tamanho_bairro.pdf")
+)
+
+salvar_grafico_cook <- function(plot_obj, arquivo_pdf, width = 7.2, height = 4.6) {
+  arquivo_png <- sub("\\.pdf$", ".png", arquivo_pdf)
+
+  ggplot2::ggsave(
+    filename = arquivo_pdf,
+    plot = plot_obj,
+    width = width,
+    height = height,
+    units = "in"
+  )
+
+  ggplot2::ggsave(
+    filename = arquivo_png,
+    plot = plot_obj,
+    width = width,
+    height = height,
+    units = "in",
+    dpi = 300
+  )
+}
+
+salvar_grafico_cook(
+  plot_obj = grafico_distancia_cook_dcls_bairro,
+  arquivo_pdf = arquivo_figuras_cook[["distancia_cook_dcls_bairro"]]
+)
+
+for (termo_atual in names(graficos_dbetacs_cook)) {
+  nome_arquivo_atual <- paste0("distancia_cook_dbetacs_", termo_atual, ".pdf")
+
+  salvar_grafico_cook(
+    plot_obj = graficos_dbetacs_cook[[termo_atual]],
+    arquivo_pdf = file.path(dir_artefatos_cook, nome_arquivo_atual)
+  )
+}
+
+salvar_grafico_cook(
+  plot_obj = grafico_distancia_cook_contexto_tamanho,
+  arquivo_pdf = arquivo_figuras_cook[["distancia_cook_dcls_tamanho_bairro"]]
+)
+
+salvar_grafico_cook(
+  plot_obj = grafico_distancia_cook_contexto_leverage,
+  arquivo_pdf = arquivo_figuras_cook[["distancia_cook_dcls_alavancagem_bairro"]]
+)
+
+salvar_grafico_cook(
+  plot_obj = grafico_distancia_cook_contexto_tamanho_leverage,
+  arquivo_pdf = arquivo_figuras_cook[["distancia_cook_alavancagem_tamanho_bairro"]]
+)
+
+if (nrow(bairros_influentes) > 0) {
+  bairros_tabela_cook <- unique(bairros_influentes$bairro)
+  tabela_distancia_cook_artigo <- tabela_distancia_cook_resumo %>%
+    filter(bairro %in% bairros_tabela_cook)
+} else {
+  tabela_distancia_cook_artigo <- tabela_distancia_cook_resumo %>%
+    arrange(desc(dcls), desc(max_abs_dbetacs), bairro) %>%
+    slice_head(n = 10)
+}
+
+tabela_distancia_cook_artigo <- tabela_distancia_cook_artigo %>%
+  arrange(desc(flag_influente), desc(dcls), desc(max_abs_dbetacs), bairro)
+
+tabela_distancia_cook_artigo_latex <- tabela_distancia_cook_artigo %>%
+  mutate(
+    termo_max_abs_dbetacs = dplyr::recode(
+      termo_max_abs_dbetacs,
+      !!!rotulos_termos_modelagem_latex
+    )
+  ) %>%
+  transmute(
+    Bairro = bairro,
+    `Tamanho do cluster` = cluster_size,
+    `Alavancagem do bairro` = formatar_numero_cook(leverage_cluster, digits = 3),
+    DCLS = formatar_numero_cook(dcls, digits = 3),
+    `Maior |DBETACS|` = formatar_numero_cook(max_abs_dbetacs, digits = 3),
+    `Termo do maior |DBETACS|` = termo_max_abs_dbetacs
+  )
+
+comparacao_coeficientes_distancia_cook_latex <- comparacao_coeficientes_modelos_cook %>%
+  mutate(
+    termo = factor(termo, levels = termos_modelo_final_cook)
+  ) %>%
+  arrange(termo) %>%
+  mutate(
+    rotulo_termo = dplyr::recode(as.character(termo), !!!rotulos_termos_modelagem_latex),
+    diferenca_absoluta = abs(estimativa_sem_influentes - estimativa_original)
+  ) %>%
+  transmute(
+    Termo = rotulo_termo,
+    `$\\hat{\\beta}$ original` = formatar_numero_cook(estimativa_original, digits = 4),
+    `EP robusto original` = formatar_numero_cook(erro_padrao_original, digits = 4),
+    `p original` = formatar_p_cook(p_valor_original),
+    `$\\hat{\\beta}$ sem influentes` = formatar_numero_cook(estimativa_sem_influentes, digits = 4),
+    `EP robusto sem influentes` = formatar_numero_cook(erro_padrao_sem_influentes, digits = 4),
+    `p sem influentes` = formatar_p_cook(p_valor_sem_influentes),
+    `$|\\Delta \\hat{\\beta}|$` = formatar_numero_cook(diferenca_absoluta, digits = 4)
+  )
+
+resumo_secao_cook <- tibble(
+  n_bairros_original = n_distinct(dados$bairro),
+  n_observacoes_original = nrow(dados),
+  n_bairros_influentes = nrow(bairros_influentes),
+  bairros_influentes = if (nrow(bairros_influentes) == 0) "" else paste(bairros_influentes$bairro, collapse = "; "),
+  bairro_maior_dcls = distancia_cook$bairro[which.max(distancia_cook$dcls)],
+  dcls_maximo = max(distancia_cook$dcls, na.rm = TRUE),
+  max_dbetacs = max(distancia_cook$max_abs_dbetacs, na.rm = TRUE),
+  n_bairros_sem_influentes = n_distinct(dados_modelo_pos_cook$bairro),
+  n_observacoes_sem_influentes = nrow(dados_modelo_pos_cook),
+  theta_original = ajuste_modelo_final$theta,
+  theta_sem_influentes = ajuste_modelo_pos_cook$theta,
+  cic_original = ajuste_modelo_final$cic,
+  cic_sem_influentes = ajuste_modelo_pos_cook$cic,
+  qic_original = ajuste_modelo_final$qic,
+  qic_sem_influentes = ajuste_modelo_pos_cook$qic,
+  qicu_original = ajuste_modelo_final$qicu,
+  qicu_sem_influentes = ajuste_modelo_pos_cook$qicu
+)
+
+readr::write_csv(tabela_distancia_cook_artigo, file.path(dir_tabelas_cook, "distancia_cook_tabela_diagnostico.csv"))
+readr::write_csv(comparacao_coeficientes_modelos_cook, file.path(dir_tabelas_cook, "distancia_cook_comparacao_coeficientes.csv"))
+readr::write_csv(resumo_modelos_cook, file.path(dir_tabelas_cook, "distancia_cook_resumo_modelos.csv"))
+readr::write_csv(resumo_secao_cook, file.path(dir_tabelas_cook, "distancia_cook_resumo_secao.csv"))
+readr::write_csv(coeficientes_modelo_final, file.path(dir_tabelas_cook, "modelo_final_coeficientes.csv"))
+
+auditoria_modelagem <- list(
+  formula = formatar_formula_modelagem(formula_modelo_final),
+  estrutura_correlacao = corstr_escolhida,
+  bairros = n_distinct(dados$bairro),
+  observacoes = nrow(dados),
+  theta = ajuste_modelo_final$theta,
+  cic = ajuste_modelo_final$cic,
+  qic = ajuste_modelo_final$qic,
+  qicu = ajuste_modelo_final$qicu,
+  bairros_influentes = as.character(bairros_influentes$bairro),
+  criterio_influencia = "DCLS >= 1 ou |DBETACS| >= 1"
+)
+
+jsonlite::write_json(
+  auditoria_modelagem,
+  file.path(dir_auditorias, "modelagem_final.json"),
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+
+cat(
+  knitr::kable(
+    tabela_distancia_cook_artigo_latex,
+    format = "latex",
+    booktabs = TRUE,
+    align = c("l", "r", "r", "r", "r", "l"),
+    escape = FALSE
+  ),
+  file = file.path(dir_tabelas_cook, "distancia_cook_tabela_diagnostico.tex"),
+  sep = "\n"
+)
+
+cat(
+  knitr::kable(
+    comparacao_coeficientes_distancia_cook_latex,
+    format = "latex",
+    booktabs = TRUE,
+    align = c("l", "r", "r", "r", "r", "r", "r", "r"),
+    escape = FALSE
+  ),
+  file = file.path(dir_tabelas_cook, "distancia_cook_tabela_comparacao_coeficientes.tex"),
+  sep = "\n"
+)
+```
+
+# 9. Centralizacao do modelo principal para interpretacao
+
+```{r centralizacao}
+# O tempo permanece na escala original: 0 corresponde a 2019 e 5 a 2024.
+# Apenas as covariaveis substantivas sao centralizadas em suas medias.
+variaveis_centradas <- setdiff(
+  all.vars(formula_modelo_final),
+  c("n_mvi", "tempo")
+)
+
+centros_variaveis <- tibble(
+  variavel = variaveis_centradas,
+  media = map_dbl(
+    variaveis_centradas,
+    ~ mean(dados[[.x]], na.rm = TRUE)
+  )
+)
+
+dados_centrados <- dados
+
+for (variavel in variaveis_centradas) {
+  media_variavel <- centros_variaveis$media[centros_variaveis$variavel == variavel]
+  dados_centrados[[paste0(variavel, "_c")]] <- dados[[variavel]] - media_variavel
+}
+
+formula_original_pos_distancia_cook_txt <- formatar_formula_modelagem(formula_modelo_final)
+formula_centrada_txt <- formula_original_pos_distancia_cook_txt
+
+for (variavel in variaveis_centradas) {
+  formula_centrada_txt <- gsub(
+    pattern = paste0("\\b", variavel, "\\b"),
+    replacement = paste0(variavel, "_c"),
+    x = formula_centrada_txt
+  )
+}
+
+formula_modelo_centrado <- as.formula(formula_centrada_txt)
+
+ajuste_original_pos_cook <- ajuste_modelo_final
+
+ajuste_centrado <- ajustar_gee_nb(
+  formula_modelo_centrado,
+  dados_centrados,
+  corstr = corstr_escolhida
+)
+
+coef_original_pos_cook <- coeficientes_modelo_final %>%
+  mutate(termo_escala_original = termo)
+
+coef_centrado <- resumo_coeficientes_gee(ajuste_centrado$gee) %>%
+  mutate(termo_escala_original = gsub("_c\\b", "", termo, perl = TRUE))
+
+comparacao_coeficientes_centrados <- coef_original_pos_cook %>%
+  transmute(
+    termo_escala_original,
+    termo_original = termo,
+    estimativa_original = estimativa,
+    erro_padrao_original = erro_padrao,
+    p_valor_original = p_valor,
+    irr_original = irr
+  ) %>%
+  full_join(
+    coef_centrado %>%
+      transmute(
+        termo_escala_original,
+        termo_centrado = termo,
+        estimativa_centrada = estimativa,
+        erro_padrao_centrado = erro_padrao,
+        p_valor_centrada = p_valor,
+        irr_centrada = irr
+      ),
+    by = "termo_escala_original"
+  ) %>%
+  mutate(
+    diferenca_beta = estimativa_centrada - estimativa_original,
+    diferenca_irr = irr_centrada - irr_original
+  )
+
+valores_ajustados_original <- as.numeric(ajuste_original_pos_cook$gee$fitted.values)
+valores_ajustados_centrado <- as.numeric(ajuste_centrado$gee$fitted.values)
+
+resumo_intercepto <- tibble(
+  modelo = c("Original", "Centrado na media"),
+  formula = c(formula_original_pos_distancia_cook_txt, formula_centrada_txt),
+  corstr = corstr_escolhida,
+  n_bairros = n_distinct(dados$bairro),
+  n_observacoes = nrow(dados),
+  qic = c(ajuste_original_pos_cook$qic, ajuste_centrado$qic),
+  qicu = c(ajuste_original_pos_cook$qicu, ajuste_centrado$qicu),
+  cic = c(ajuste_original_pos_cook$cic, ajuste_centrado$cic),
+  theta = c(ajuste_original_pos_cook$theta, ajuste_centrado$theta),
+  intercepto_log = c(
+    coef_original_pos_cook$estimativa[coef_original_pos_cook$termo == "(Intercept)"][1],
+    coef_centrado$estimativa[coef_centrado$termo == "(Intercept)"][1]
+  ),
+  mvi_esperada = exp(intercepto_log)
+)
+
+diagnostico_centralizacao <- tibble(
+  regra_centralizacao =
+    paste0(
+      paste(variaveis_centradas, collapse = ", "),
+      " centralizadas na media do conjunto completo."
+    ),
+  max_diferenca_absoluta_ajustados = max(abs(valores_ajustados_original - valores_ajustados_centrado), na.rm = TRUE)
+)
+
+base_perfil_medio <- tibble(
+  ano = 2019:2024,
+  tempo = 0:5,
+  waves_pos = tempo + 1,
+  n_mvi = 0
+)
+
+for (variavel in variaveis_centradas) {
+  base_perfil_medio[[paste0(variavel, "_c")]] <- 0
+}
+
+incrementos_cenario <- c(
+  acao_policial = 10,
+  tiroteio = 10,
+  pop_total = 1,
+  renda = 1,
+  milicia = 1
+)
+
+rotulos_cenario <- c(
+  acao_policial = "Acao policial (+10)",
+  tiroteio = "Tiroteio (+10)",
+  pop_total = "Populacao total (+1)",
+  renda = "Renda (+1)",
+  milicia = "Milicia (+1)"
+)
+
+cenarios_perfil_medio_lista <- list(
+  tibble(cenario = "Perfil base")
+)
+
+for (variavel in intersect(names(incrementos_cenario), variaveis_centradas)) {
+  linha_cenario <- tibble(cenario = rotulos_cenario[[variavel]])
+
+  for (variavel_base in variaveis_centradas) {
+    linha_cenario[[paste0(variavel_base, "_c")]] <- 0
+  }
+
+  linha_cenario[[paste0(variavel, "_c")]] <- incrementos_cenario[[variavel]]
+  cenarios_perfil_medio_lista[[length(cenarios_perfil_medio_lista) + 1]] <- linha_cenario
+}
+
+cenarios_perfil_medio <- bind_rows(cenarios_perfil_medio_lista)
+
+for (variavel in variaveis_centradas) {
+  nome_variavel_centrada <- paste0(variavel, "_c")
+  cenarios_perfil_medio[[nome_variavel_centrada]][is.na(cenarios_perfil_medio[[nome_variavel_centrada]])] <- 0
+}
+
+trajetoria_perfil_medio <- bind_rows(
+  lapply(seq_len(nrow(cenarios_perfil_medio)), function(i) {
+    base_cenario <- base_perfil_medio
+
+    for (variavel in variaveis_centradas) {
+      nome_variavel_centrada <- paste0(variavel, "_c")
+      base_cenario[[nome_variavel_centrada]] <- cenarios_perfil_medio[[nome_variavel_centrada]][[i]]
+    }
+
+    base_cenario %>%
+      mutate(
+        mvi_predita = prever_media_modelagem(
+          formula_modelo_centrado,
+          ajuste_centrado$gee,
+          base_cenario
+        ),
+        cenario = cenarios_perfil_medio$cenario[[i]]
+      ) %>%
+      group_by(cenario, ano, tempo) %>%
+      summarise(
+        mvi_predita = mean(mvi_predita),
+        .groups = "drop"
+      )
+  })
+)
+
+print(centros_variaveis)
+print(resumo_intercepto)
+print(comparacao_coeficientes_centrados)
+print(diagnostico_centralizacao)
+```
+
+```{r grafico-centralizacao, echo=FALSE}
+cores_cenarios <- c(
+  "Perfil base" = "#1B1B1B",
+  "Acao policial (+10)" = "#6C63FF",
+  "Tiroteio (+10)" = "#F39C12",
+  "Populacao total (+1)" = "#00A8A8",
+  "Renda (+1)" = "#D63031",
+  "Milicia (+1)" = "#2E8B57"
+)
+
+grafico_trajetoria_perfil_medio <- ggplot(
+  trajetoria_perfil_medio,
+  aes(x = ano, y = mvi_predita, color = cenario, group = cenario)
+) +
+  geom_line(linewidth = 1.15) +
+  geom_point(size = 2.2) +
+  scale_color_manual(
+    values = cores_cenarios[names(cores_cenarios) %in% unique(trajetoria_perfil_medio$cenario)],
+    name = NULL
+  ) +
+  scale_x_continuous(breaks = 2019:2024) +
+  labs(
+    x = "Ano",
+    y = "MVI prevista para o perfil medio"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    panel.grid.minor = element_blank()
+  )
+
+ggsave(
+  file.path(dir_figuras, "modelo_trajetoria_perfil_medio.png"),
+  grafico_trajetoria_perfil_medio,
+  width = 8.5,
+  height = 5.2,
+  dpi = 300
+)
+
+grafico_trajetoria_perfil_medio
+```

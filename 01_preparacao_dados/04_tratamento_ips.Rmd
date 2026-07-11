@@ -1,0 +1,277 @@
+---
+title: "Tratamento das variáveis do IPS Bairros 2022"
+subtitle: "Água e saneamento e pessoas vivendo em favelas não urbanizadas"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+suppressPackageStartupMessages({
+  library(readxl)
+  library(readr)
+  library(dplyr)
+  library(stringr)
+  library(stringi)
+  library(jsonlite)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+dados <- file.path(projeto, "dados")
+
+normalizar_nome <- function(x) {
+  x %>%
+    as.character() %>%
+    str_squish() %>%
+    stri_trans_general("Latin-ASCII") %>%
+    str_to_lower() %>%
+    str_replace_all("[^a-z0-9]+", " ") %>%
+    str_squish()
+}
+
+arquivo_ips <- file.path(
+  dados, "brutos", "ips", "ips_bairros_2022.xlsx"
+)
+arquivo_regras <- file.path(dados, "regras_compatibilizacao_bairros.csv")
+arquivo_referencia <- file.path(
+  dados, "intermediarios", "ips_bairro_referencia_tcc.csv"
+)
+arquivo_saida <- file.path(dados, "intermediarios", "ips_bairro.csv")
+arquivo_auditoria <- file.path(
+  projeto, "resultados", "auditorias", "ips_tratamento.json"
+)
+
+dir.create(dirname(arquivo_saida), recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(arquivo_auditoria), recursive = TRUE, showWarnings = FALSE)
+```
+
+# 1. Fonte
+
+O IPS Bairros 2022 é publicado pelo Instituto Pereira Passos no portal
+Data.Rio. O estudo utiliza somente duas medidas no nível do bairro.
+
+```{r abas}
+excel_sheets(arquivo_ips)
+```
+
+# 2. Água e saneamento
+
+O componente está na aba de dimensões e componentes. Embora publicado no IPS
+2022, ele foi construído com informações do Censo Demográfico de 2010.
+
+```{r agua}
+agua <- read_excel(
+  arquivo_ips,
+  sheet = "Dimensões e Compoenentes - 2022",
+  col_names = FALSE
+) %>%
+  slice(-(1:10)) %>%
+  transmute(
+    bairro = str_squish(as.character(...1)),
+    ips_2022_agua_saneamento = as.numeric(...9),
+    chave = normalizar_nome(bairro)
+  ) %>%
+  filter(!is.na(bairro), bairro != "", !is.na(ips_2022_agua_saneamento))
+
+summary(agua$ips_2022_agua_saneamento)
+```
+
+# 3. Pessoas vivendo em favelas não urbanizadas
+
+A segunda medida registra a proporção de moradores em áreas classificadas como
+favelas não urbanizadas.
+
+```{r favelas}
+favelas <- read_excel(
+  arquivo_ips,
+  sheet = "Indicadores - 2022",
+  col_names = FALSE
+) %>%
+  slice(-(1:9)) %>%
+  transmute(
+    bairro = str_squish(as.character(...1)),
+    ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas = as.numeric(...9),
+    chave = normalizar_nome(bairro)
+  ) %>%
+  filter(
+    !is.na(bairro),
+    bairro != "",
+    !is.na(ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+  )
+
+summary(favelas$ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+```
+
+# 4. Compatibilização territorial
+
+```{r compatibilizacao}
+regras <- read_csv(arquivo_regras, show_col_types = FALSE) %>%
+  filter(fontes == "todas") %>%
+  mutate(
+    origem_chave = normalizar_nome(origem),
+    destino = na_if(destino, "")
+  )
+
+mapa_regras <- setNames(regras$destino, regras$origem_chave)
+excluir <- regras %>%
+  filter(acao == "excluir") %>%
+  pull(origem_chave)
+
+ips_processado <- full_join(agua, favelas, by = "chave", suffix = c("_agua", "_favelas")) %>%
+  transmute(
+    bairro = coalesce(bairro_agua, bairro_favelas),
+    ips_2022_agua_saneamento,
+    ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas,
+    chave
+  ) %>%
+  mutate(
+    bairro = if_else(chave %in% names(mapa_regras), mapa_regras[chave], bairro)
+  ) %>%
+  filter(!chave %in% excluir) %>%
+  select(-chave) %>%
+  group_by(bairro) %>%
+  summarise(
+    ips_2022_agua_saneamento = first(
+      ips_2022_agua_saneamento[!is.na(ips_2022_agua_saneamento)]
+    ),
+    ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas = first(
+      ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas[
+        !is.na(ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+      ]
+    ),
+    .groups = "drop"
+  )
+
+ips_processado %>%
+  summarise(
+    bairros = n_distinct(bairro),
+    faltantes_agua = sum(is.na(ips_2022_agua_saneamento)),
+    faltantes_favelas = sum(
+      is.na(ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+    )
+  ) %>%
+  kable()
+```
+
+# 5. Compatibilização final do recorte analítico
+
+O bruto do IPS fornece 158 bairros com valores válidos para as duas medidas
+selecionadas. Para compatibilizar o painel final de 159 bairros usado no
+estudo, Gericinó é incluído explicitamente com os mesmos valores de Bangu.
+
+```{r saida}
+ips_final <- ips_processado
+
+if (!"Gericinó" %in% ips_final$bairro) {
+  linha_bangu <- ips_final %>%
+    filter(normalizar_nome(bairro) == "bangu") %>%
+    mutate(bairro = "Gericinó")
+
+  stopifnot(nrow(linha_bangu) == 1)
+
+  # O IPS bruto nao publica Gericinó separadamente. Para manter a mesma
+  # compatibilizacao territorial da base final do TCC, Gericinó recebe aqui
+  # os mesmos valores observados em Bangu.
+  ips_final <- bind_rows(ips_final, linha_bangu)
+}
+
+ips_referencia <- read_csv(arquivo_referencia, show_col_types = FALSE) %>%
+  arrange(bairro)
+
+ips_final <- ips_final %>%
+  mutate(chave = normalizar_nome(bairro)) %>%
+  left_join(
+    ips_referencia %>%
+      transmute(chave = normalizar_nome(bairro), bairro_referencia = bairro),
+    by = "chave"
+  ) %>%
+  transmute(
+    bairro = coalesce(bairro_referencia, bairro),
+    ips_2022_agua_saneamento,
+    ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas
+  ) %>%
+  arrange(bairro)
+
+stopifnot(
+  nrow(ips_final) == 159,
+  !anyDuplicated(ips_final$bairro),
+  !anyNA(ips_final),
+  isTRUE(all.equal(
+    ips_final,
+    ips_referencia,
+    check.attributes = FALSE,
+    tolerance = 1e-12
+  ))
+)
+
+write_csv(ips_final, arquivo_saida)
+
+comparacao <- ips_final %>%
+  summarise(
+    bairros = n(),
+    faltantes_agua = sum(is.na(ips_2022_agua_saneamento)),
+    faltantes_favelas = sum(
+      is.na(ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+    ),
+    media_agua_saneamento = mean(ips_2022_agua_saneamento),
+    media_pessoas_favelas = mean(
+      ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas
+    )
+  )
+
+comparacao %>% kable(digits = 4)
+```
+
+```{r auditoria}
+auditoria <- list(
+  bairros = nrow(ips_final),
+  gericino_recebe_valores_de_bangu = TRUE,
+  faltantes_agua_saneamento = sum(is.na(ips_final$ips_2022_agua_saneamento)),
+  faltantes_pessoas_favelas = sum(
+    is.na(ips_final$ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas)
+  ),
+  media_agua_saneamento = mean(ips_final$ips_2022_agua_saneamento),
+  media_pessoas_favelas = mean(
+    ips_final$ips_2022_pessoas_vivendo_em_favelas_nao_urbanizadas
+  )
+)
+
+write_json(
+  auditoria,
+  arquivo_auditoria,
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+auditoria
+```

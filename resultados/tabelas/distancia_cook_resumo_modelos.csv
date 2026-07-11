@@ -1,0 +1,3 @@
+modelo,formula,corstr,n_bairros,n_observacoes,n_bairros_removidos,theta,cic,qic,qicu
+Modelo original,n_mvi ~ tempo + I(tempo^2) + I(tempo^3) + acao_policial + pop_total +      milicia + renda + acao_policial:tempo + acao_policial:I(tempo^2) +      acao_policial:I(tempo^3),Exchangeable,159,954,0,1.4185491220518454,19.0333,-1971.907,-1987.973
+Modelo sem bairros influentes,n_mvi ~ tempo + I(tempo^2) + I(tempo^3) + acao_policial + pop_total +      milicia + renda + acao_policial:tempo + acao_policial:I(tempo^2) +      acao_policial:I(tempo^3),Exchangeable,158,948,1,1.4615387315063957,16.29209,-1952.091,-1962.675

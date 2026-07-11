@@ -1,0 +1,73 @@
+{
+  "base": {
+    "linhas": 954,
+    "colunas": 15,
+    "bairros": 159,
+    "anos": [
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024
+    ],
+    "total_mvi": 7419,
+    "total_tiroteios": 15380,
+    "total_acoes_policiais": 4337,
+    "duplicatas_bairro_ano": 0,
+    "valores_ausentes": 0
+  },
+  "modelo_final": {
+    "estrutura_correlacao": "Exchangeable",
+    "coeficientes_conferidos": {
+      "(Intercept)": 1.6494,
+      "tempo": -0.5241,
+      "I(tempo^2)": 0.2149,
+      "I(tempo^3)": -0.0242,
+      "acao_policial": 0.0351,
+      "pop_total": 0.1127,
+      "milicia": 0.0062,
+      "renda": -0.0675,
+      "tempo:acao_policial": 0.0299,
+      "I(tempo^2):acao_policial": -0.0136,
+      "I(tempo^3):acao_policial": 0.0017
+    },
+    "tolerancia_coeficientes": 0.0015
+  },
+  "cook": {
+    "bairro_maior_dbetacs": "Barra da Tijuca",
+    "max_abs_dbetacs_barra": 1.0333019460459605
+  },
+  "artefatos_conferidos": [
+    "resultados/figuras/cap5_fig01_trajetorias_mvi_bairros.png",
+    "resultados/figuras/cap5_fig02_trajetorias_mvi_sem_bangu.png",
+    "resultados/figuras/cap5_fig03_trajetorias_amostra_bairros.png",
+    "resultados/figuras/cap5_fig04_trajetorias_top10_mvi.png",
+    "resultados/figuras/cap5_fig05_renda_mvi_medio.png",
+    "resultados/figuras/cap5_fig06_populacao_mvi_medio.png",
+    "resultados/figuras/cap5_fig07_favelas_mvi_medio.png",
+    "resultados/figuras/cap5_fig08_agua_saneamento_mvi_medio.png",
+    "resultados/figuras/cap5_fig09_acao_policial_mvi_anual.png",
+    "resultados/figuras/cap5_fig10_tiroteios_mvi_anual.png",
+    "resultados/figuras/cap5_fig11_dominio_ada_mvi_anual.png",
+    "resultados/figuras/cap5_fig12_dominio_cv_mvi_anual.png",
+    "resultados/figuras/cap5_fig13_dominio_milicia_mvi_anual.png",
+    "resultados/figuras/cap5_fig14_dominio_tcp_mvi_anual.png",
+    "resultados/figuras/cap6_fig21_trajetoria_media_estimada_mvi.jpeg",
+    "resultados/figuras/cap6_fig22_observado_ajustado_mvi.jpeg",
+    "resultados/figuras/analise_trajetorias_mvi_bairros.png",
+    "resultados/figuras/analise_trajetorias_top10_mvi.png",
+    "resultados/figuras/analise_mvi_acao_policial_por_ano.png",
+    "resultados/figuras/analise_mvi_tiroteios_por_ano.png",
+    "resultados/figuras/analise_mvi_dominio_territorial.png",
+    "resultados/figuras/distancia_cook_dcls_bairro.png",
+    "resultados/figuras/distancia_cook_dbetacs_acao_policial.png",
+    "resultados/figuras/distancia_cook_dbetacs_pop_total.png",
+    "resultados/figuras/distancia_cook_dbetacs_milicia.png",
+    "resultados/figuras/distancia_cook_dbetacs_renda.png",
+    "resultados/tabelas/analise_estatisticas_mvi_anuais.csv",
+    "resultados/tabelas/analise_correlacao_mvi_entre_anos.csv",
+    "resultados/tabelas/modelo_final_coeficientes.csv",
+    "resultados/tabelas/distancia_cook_tabela_diagnostico.csv"
+  ]
+}

@@ -1,0 +1,2 @@
+n_bairros_original,n_observacoes_original,n_bairros_influentes,bairros_influentes,bairro_maior_dcls,dcls_maximo,max_dbetacs,n_bairros_sem_influentes,n_observacoes_sem_influentes,theta_original,theta_sem_influentes,cic_original,cic_sem_influentes,qic_original,qic_sem_influentes,qicu_original,qicu_sem_influentes
+159,954,1,Barra da Tijuca,Barra da Tijuca,0.14815818167686975,1.0333019460459605,158,948,1.4185491220518454,1.4615387315063957,19.0333,16.29209,-1971.907,-1952.091,-1987.973,-1962.675

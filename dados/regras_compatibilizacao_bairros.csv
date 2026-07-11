@@ -1,0 +1,11 @@
+origem,destino,acao,fontes,justificativa
+Ilha de Guaratiba,Guaratiba,agregar,todas,Compatibilizacao com a divisao territorial das bases de referencia
+Jabour,Senador Camará,agregar,todas,Compatibilizacao com a divisao territorial das bases de referencia
+Lapa,Centro,agregar,todas,Compatibilizacao com a divisao territorial das bases de referencia
+Vila Kennedy,Bangu,agregar,todas,Compatibilizacao com a divisao territorial das bases de referencia
+Freguesia (Ilha),Freguesia (Ilha do Governador),renomear,todas,Padronizacao nominal
+Osvaldo Cruz,Oswaldo Cruz,renomear,todas,Padronizacao nominal
+Barra Olímpica,Barra da Tijuca,renomear,Fogo Cruzado,Padronizacao territorial da fonte
+Imperial de São Cristóvão,São Cristóvão,renomear,Mapa das faccoes,Padronizacao territorial da fonte
+Argentino,,excluir,Mapa das faccoes,Denominacao sem correspondencia na base final
+Paquetá,,excluir,todas,Ausencia das duas variaveis selecionadas do IPS

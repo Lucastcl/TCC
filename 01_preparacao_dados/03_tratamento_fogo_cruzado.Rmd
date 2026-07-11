@@ -1,0 +1,275 @@
+---
+title: "Tratamento dos dados do Fogo Cruzado"
+subtitle: "Tiroteios e ações policiais por bairro e ano, 2019-2024"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+suppressPackageStartupMessages({
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  library(lubridate)
+  library(jsonlite)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+dados <- file.path(projeto, "dados")
+
+arquivo_ocorrencias <- file.path(
+  dados, "brutos", "fogo_cruzado",
+  "ocorrencias_fogo_cruzado_2019_2024.csv"
+)
+arquivo_ocorrencias_atualizado <- file.path(
+  dados, "brutos", "fogo_cruzado",
+  "ocorrencias_fogo_cruzado_2019_2024_atualizado.csv"
+)
+arquivo_bairros <- file.path(
+  dados, "brutos", "malhas", "bairros_oficiais.csv"
+)
+arquivo_regras <- file.path(dados, "regras_compatibilizacao_bairros.csv")
+arquivo_referencia <- file.path(
+  dados, "intermediarios", "fogo_cruzado_bairro_ano_referencia_tcc.csv"
+)
+arquivo_atualizado <- file.path(
+  dados, "intermediarios", "fogo_cruzado_bairro_ano_api_atual.csv"
+)
+arquivo_saida <- file.path(
+  dados, "intermediarios", "fogo_cruzado_bairro_ano.csv"
+)
+arquivo_auditoria <- file.path(
+  projeto, "resultados", "auditorias", "fogo_cruzado_tratamento.json"
+)
+
+dir.create(dirname(arquivo_saida), recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(arquivo_auditoria), recursive = TRUE, showWarnings = FALSE)
+```
+
+# 1. Fonte e variáveis utilizadas
+
+Os registros foram obtidos da API do Fogo Cruzado mediante autorização. A
+unidade original é a ocorrência. Para o estudo, são necessários o identificador,
+o município, a data, o bairro e a indicação de ação policial.
+
+```{r leitura}
+arquivo_ocorrencias_api <- if (file.exists(arquivo_ocorrencias_atualizado)) {
+  arquivo_ocorrencias_atualizado
+} else {
+  arquivo_ocorrencias
+}
+
+ocorrencias <- read_csv(arquivo_ocorrencias_api, show_col_types = FALSE) %>%
+  transmute(
+    id = as.character(id),
+    municipio = str_squish(as.character(city_name)),
+    data = ymd_hms(date, quiet = TRUE),
+    bairro_original = str_squish(as.character(neighborhood_name)),
+    acao_policial = case_when(
+      !is.na(fc_acao_policial) ~ as.integer(fc_acao_policial > 0),
+      TRUE ~ as.integer(as.logical(policeAction))
+    )
+  ) %>%
+  mutate(ano = year(data)) %>%
+  filter(
+    municipio == "Rio de Janeiro",
+    between(ano, 2019L, 2024L)
+  )
+
+ocorrencias %>%
+  count(ano, name = "ocorrencias") %>%
+  kable()
+```
+
+# 2. Padronização dos bairros
+
+Os nomes são normalizados apenas para a correspondência textual. O nome
+publicado na saída permanece igual ao nome oficial do bairro.
+
+```{r padronizacao}
+normalizar_nome <- function(x) {
+  x %>%
+    as.character() %>%
+    str_squish() %>%
+    stri_trans_general("Latin-ASCII") %>%
+    str_to_lower() %>%
+    str_replace_all("[^a-z0-9]+", " ") %>%
+    str_squish()
+}
+
+fogo_tcc <- read_csv(arquivo_referencia, show_col_types = FALSE) %>%
+  arrange(bairro, ano)
+
+bairros_referencia <- fogo_tcc %>%
+  distinct(bairro) %>%
+  mutate(chave = normalizar_nome(bairro))
+
+regras <- read_csv(arquivo_regras, show_col_types = FALSE) %>%
+  filter(fontes %in% c("todas", "Fogo Cruzado")) %>%
+  mutate(
+    origem_chave = normalizar_nome(origem),
+    destino_chave = normalizar_nome(destino)
+  )
+
+mapa_regras <- setNames(regras$destino_chave, regras$origem_chave)
+chaves_excluidas <- regras %>%
+  filter(acao == "excluir") %>%
+  pull(origem_chave)
+
+ocorrencias <- ocorrencias %>%
+  mutate(
+    chave = normalizar_nome(bairro_original),
+    chave = if_else(chave %in% names(mapa_regras), mapa_regras[chave], chave),
+    chave = if_else(chave %in% c("", "ni"), NA_character_, chave),
+    chave = if_else(chave %in% chaves_excluidas, NA_character_, chave)
+  ) %>%
+  left_join(bairros_referencia, by = "chave")
+
+sem_correspondencia <- ocorrencias %>%
+  filter(is.na(bairro)) %>%
+  count(bairro_original, sort = TRUE)
+
+sem_correspondencia %>% kable()
+```
+
+# 3. Agregação por bairro e ano
+
+`fc_total_tiroteios` corresponde ao número de ocorrências. `fc_acao_policial`
+corresponde ao número de ocorrências em que houve ação policial.
+
+```{r agregacao}
+bairros_estudo <- fogo_tcc %>%
+  distinct(bairro)
+
+grade <- crossing(
+  bairro = bairros_estudo$bairro,
+  ano = 2019:2024
+)
+
+fogo_atualizado <- ocorrencias %>%
+  filter(!is.na(bairro)) %>%
+  group_by(bairro, ano) %>%
+  summarise(
+    fc_total_tiroteios = n(),
+    fc_acao_policial = sum(acao_policial, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  right_join(grade, by = c("bairro", "ano")) %>%
+  mutate(
+    fc_total_tiroteios = replace_na(fc_total_tiroteios, 0L),
+    fc_acao_policial = replace_na(fc_acao_policial, 0L)
+  ) %>%
+  arrange(bairro, ano)
+
+write_csv(fogo_atualizado, arquivo_atualizado)
+
+fogo_atualizado %>%
+  group_by(ano) %>%
+  summarise(
+    tiroteios = sum(fc_total_tiroteios),
+    acoes_policiais = sum(fc_acao_policial),
+    .groups = "drop"
+  ) %>%
+  kable()
+```
+
+# 4. Base padrão do TCC e comparação com a API
+
+A base principal do repositório usa o agregado congelado no fechamento do TCC.
+A consulta atual da API é mantida apenas como comparação, pois pode retornar
+totais diferentes quando a fonte é atualizada.
+
+```{r comparacao_tcc}
+comparacao <- bind_rows(
+  fogo_tcc %>%
+    summarise(
+      versao = "Base de referência do TCC",
+      tiroteios = sum(fc_total_tiroteios),
+      acoes_policiais = sum(fc_acao_policial)
+    ),
+  fogo_atualizado %>%
+    summarise(
+      versao = "Consulta atual da API compatibilizada",
+      tiroteios = sum(fc_total_tiroteios),
+      acoes_policiais = sum(fc_acao_policial)
+    )
+)
+
+write_csv(fogo_tcc, arquivo_saida)
+comparacao %>% kable()
+```
+
+# 5. Auditoria
+
+```{r auditoria}
+stopifnot(
+  nrow(fogo_tcc) == 954,
+  n_distinct(fogo_tcc$bairro) == 159,
+  identical(as.integer(sort(unique(fogo_tcc$ano))), 2019:2024),
+  !anyDuplicated(fogo_tcc[c("bairro", "ano")])
+)
+
+auditoria <- list(
+  etapa = "fogo_cruzado",
+  ocorrencias_api_disponiveis = nrow(ocorrencias),
+  ocorrencias_api_com_bairro = sum(!is.na(ocorrencias$bairro)),
+  total_tiroteios = sum(fogo_tcc$fc_total_tiroteios),
+  total_acao_policial = sum(fogo_tcc$fc_acao_policial),
+  total_tiroteios_consulta_atual = sum(fogo_atualizado$fc_total_tiroteios),
+  total_acao_policial_consulta_atual = sum(fogo_atualizado$fc_acao_policial),
+  diferenca_tcc_menos_api_tiroteios = sum(fogo_tcc$fc_total_tiroteios) -
+    sum(fogo_atualizado$fc_total_tiroteios),
+  diferenca_tcc_menos_api_acao_policial = sum(fogo_tcc$fc_acao_policial) -
+    sum(fogo_atualizado$fc_acao_policial),
+  registros_api_sem_bairro_referencia = sum(is.na(ocorrencias$bairro)),
+  bairros = n_distinct(fogo_tcc$bairro),
+  linhas = nrow(fogo_tcc),
+  observacao = paste(
+    "A base principal usa o agregado congelado no fechamento do TCC.",
+    "A consulta atual da API fica registrada apenas como comparação."
+  )
+)
+
+write_json(
+  auditoria,
+  arquivo_auditoria,
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+
+auditoria
+```

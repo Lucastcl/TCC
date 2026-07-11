@@ -1,0 +1,955 @@
+bairro,ano,fc_total_tiroteios,fc_acao_policial
+Freguesia (Ilha do Governador),2019,6,1
+Freguesia (Ilha do Governador),2020,2,0
+Freguesia (Ilha do Governador),2021,2,0
+Freguesia (Ilha do Governador),2022,2,1
+Freguesia (Ilha do Governador),2023,1,0
+Freguesia (Ilha do Governador),2024,1,0
+Bancários,2019,1,0
+Bancários,2020,5,1
+Bancários,2021,7,3
+Bancários,2022,3,1
+Bancários,2023,0,0
+Bancários,2024,1,1
+Galeão,2019,18,7
+Galeão,2020,10,3
+Galeão,2021,6,1
+Galeão,2022,27,16
+Galeão,2023,2,1
+Galeão,2024,10,5
+Tauá,2019,0,0
+Tauá,2020,1,1
+Tauá,2021,1,0
+Tauá,2022,4,0
+Tauá,2023,6,2
+Tauá,2024,6,2
+Portuguesa,2019,4,2
+Portuguesa,2020,3,0
+Portuguesa,2021,1,0
+Portuguesa,2022,2,1
+Portuguesa,2023,1,1
+Portuguesa,2024,0,0
+Moneró,2019,1,0
+Moneró,2020,0,0
+Moneró,2021,0,0
+Moneró,2022,0,0
+Moneró,2023,0,0
+Moneró,2024,0,0
+Vigário Geral,2019,21,6
+Vigário Geral,2020,17,5
+Vigário Geral,2021,16,7
+Vigário Geral,2022,23,11
+Vigário Geral,2023,17,7
+Vigário Geral,2024,8,6
+Cocotá,2019,4,0
+Cocotá,2020,0,0
+Cocotá,2021,3,0
+Cocotá,2022,0,0
+Cocotá,2023,1,1
+Cocotá,2024,0,0
+Jardim América,2019,12,2
+Jardim América,2020,10,1
+Jardim América,2021,13,6
+Jardim América,2022,8,2
+Jardim América,2023,7,6
+Jardim América,2024,3,1
+Jardim Carioca,2019,14,8
+Jardim Carioca,2020,13,6
+Jardim Carioca,2021,10,1
+Jardim Carioca,2022,13,3
+Jardim Carioca,2023,6,2
+Jardim Carioca,2024,2,0
+Pavuna,2019,74,18
+Pavuna,2020,37,11
+Pavuna,2021,36,14
+Pavuna,2022,30,9
+Pavuna,2023,17,7
+Pavuna,2024,14,6
+Cordovil,2019,33,6
+Cordovil,2020,55,8
+Cordovil,2021,38,6
+Cordovil,2022,55,10
+Cordovil,2023,19,10
+Cordovil,2024,35,19
+Jardim Guanabara,2019,0,0
+Jardim Guanabara,2020,0,0
+Jardim Guanabara,2021,1,0
+Jardim Guanabara,2022,1,0
+Jardim Guanabara,2023,0,0
+Jardim Guanabara,2024,2,1
+Parada de Lucas,2019,14,5
+Parada de Lucas,2020,11,4
+Parada de Lucas,2021,9,3
+Parada de Lucas,2022,12,3
+Parada de Lucas,2023,4,3
+Parada de Lucas,2024,7,4
+Parque Colúmbia,2019,3,1
+Parque Colúmbia,2020,1,0
+Parque Colúmbia,2021,0,0
+Parque Colúmbia,2022,1,0
+Parque Colúmbia,2023,1,0
+Parque Colúmbia,2024,1,1
+Praia da Bandeira,2019,0,0
+Praia da Bandeira,2020,0,0
+Praia da Bandeira,2021,0,0
+Praia da Bandeira,2022,1,0
+Praia da Bandeira,2023,0,0
+Praia da Bandeira,2024,1,0
+Penha Circular,2019,73,10
+Penha Circular,2020,33,6
+Penha Circular,2021,22,11
+Penha Circular,2022,23,6
+Penha Circular,2023,12,9
+Penha Circular,2024,9,2
+Cacuia,2019,1,0
+Cacuia,2020,2,0
+Cacuia,2021,1,0
+Cacuia,2022,0,0
+Cacuia,2023,0,0
+Cacuia,2024,0,0
+Irajá,2019,24,3
+Irajá,2020,16,1
+Irajá,2021,19,3
+Irajá,2022,20,5
+Irajá,2023,19,6
+Irajá,2024,12,3
+Anchieta,2019,61,17
+Anchieta,2020,59,15
+Anchieta,2021,56,17
+Anchieta,2022,33,5
+Anchieta,2023,36,6
+Anchieta,2024,13,7
+Acari,2019,34,14
+Acari,2020,39,30
+Acari,2021,11,2
+Acari,2022,8,3
+Acari,2023,4,1
+Acari,2024,6,5
+Pitangueiras,2019,2,1
+Pitangueiras,2020,4,0
+Pitangueiras,2021,4,0
+Pitangueiras,2022,2,0
+Pitangueiras,2023,1,0
+Pitangueiras,2024,1,1
+Costa Barros,2019,97,30
+Costa Barros,2020,54,21
+Costa Barros,2021,66,23
+Costa Barros,2022,35,19
+Costa Barros,2023,40,17
+Costa Barros,2024,51,17
+Brás de Pina,2019,36,6
+Brás de Pina,2020,30,3
+Brás de Pina,2021,44,8
+Brás de Pina,2022,62,22
+Brás de Pina,2023,50,14
+Brás de Pina,2024,79,18
+Penha,2019,79,34
+Penha,2020,54,11
+Penha,2021,45,16
+Penha,2022,35,17
+Penha,2023,36,25
+Penha,2024,37,22
+Zumbi,2019,0,0
+Zumbi,2020,0,0
+Zumbi,2021,0,0
+Zumbi,2022,0,0
+Zumbi,2023,0,0
+Zumbi,2024,0,0
+Ribeira,2019,0,0
+Ribeira,2020,0,0
+Ribeira,2021,0,0
+Ribeira,2022,1,0
+Ribeira,2023,0,0
+Ribeira,2024,0,0
+Coelho Neto,2019,20,7
+Coelho Neto,2020,8,3
+Coelho Neto,2021,10,2
+Coelho Neto,2022,19,12
+Coelho Neto,2023,10,3
+Coelho Neto,2024,14,7
+Guadalupe,2019,76,14
+Guadalupe,2020,32,11
+Guadalupe,2021,40,11
+Guadalupe,2022,33,14
+Guadalupe,2023,29,9
+Guadalupe,2024,21,9
+Parque Anchieta,2019,4,0
+Parque Anchieta,2020,6,0
+Parque Anchieta,2021,2,0
+Parque Anchieta,2022,1,0
+Parque Anchieta,2023,2,0
+Parque Anchieta,2024,0,0
+Barros Filho,2019,19,8
+Barros Filho,2020,9,4
+Barros Filho,2021,11,2
+Barros Filho,2022,7,5
+Barros Filho,2023,17,4
+Barros Filho,2024,12,2
+Vista Alegre,2019,6,0
+Vista Alegre,2020,1,0
+Vista Alegre,2021,5,0
+Vista Alegre,2022,2,0
+Vista Alegre,2023,1,0
+Vista Alegre,2024,2,0
+Ricardo de Albuquerque,2019,17,2
+Ricardo de Albuquerque,2020,16,8
+Ricardo de Albuquerque,2021,6,3
+Ricardo de Albuquerque,2022,4,1
+Ricardo de Albuquerque,2023,7,2
+Ricardo de Albuquerque,2024,2,2
+Colégio,2019,16,6
+Colégio,2020,21,6
+Colégio,2021,6,1
+Colégio,2022,11,1
+Colégio,2023,12,5
+Colégio,2024,7,5
+Honório Gurgel,2019,19,7
+Honório Gurgel,2020,1,1
+Honório Gurgel,2021,10,0
+Honório Gurgel,2022,6,1
+Honório Gurgel,2023,2,1
+Honório Gurgel,2024,3,0
+Olaria,2019,65,13
+Olaria,2020,27,6
+Olaria,2021,25,10
+Olaria,2022,12,3
+Olaria,2023,8,3
+Olaria,2024,4,3
+Vila da Penha,2019,8,0
+Vila da Penha,2020,7,0
+Vila da Penha,2021,8,1
+Vila da Penha,2022,9,4
+Vila da Penha,2023,4,1
+Vila da Penha,2024,11,3
+Maré,2019,112,48
+Maré,2020,65,23
+Maré,2021,52,18
+Maré,2022,67,26
+Maré,2023,49,38
+Maré,2024,69,48
+Vila Militar,2019,1,1
+Vila Militar,2020,2,1
+Vila Militar,2021,1,0
+Vila Militar,2022,1,1
+Vila Militar,2023,0,0
+Vila Militar,2024,0,0
+Cidade Universitária,2019,1,0
+Cidade Universitária,2020,0,0
+Cidade Universitária,2021,1,0
+Cidade Universitária,2022,1,1
+Cidade Universitária,2023,1,1
+Cidade Universitária,2024,0,0
+Rocha Miranda,2019,27,6
+Rocha Miranda,2020,12,2
+Rocha Miranda,2021,12,1
+Rocha Miranda,2022,10,3
+Rocha Miranda,2023,9,5
+Rocha Miranda,2024,14,5
+Ramos,2019,7,0
+Ramos,2020,6,4
+Ramos,2021,5,3
+Ramos,2022,7,2
+Ramos,2023,5,1
+Ramos,2024,5,3
+Realengo,2019,73,15
+Realengo,2020,54,6
+Realengo,2021,75,19
+Realengo,2022,55,19
+Realengo,2023,44,21
+Realengo,2024,25,9
+Vila Kosmos,2019,1,0
+Vila Kosmos,2020,1,0
+Vila Kosmos,2021,0,0
+Vila Kosmos,2022,25,7
+Vila Kosmos,2023,12,4
+Vila Kosmos,2024,17,11
+Marechal Hermes,2019,17,4
+Marechal Hermes,2020,11,4
+Marechal Hermes,2021,10,1
+Marechal Hermes,2022,8,1
+Marechal Hermes,2023,4,1
+Marechal Hermes,2024,4,2
+Vicente de Carvalho,2019,74,13
+Vicente de Carvalho,2020,70,12
+Vicente de Carvalho,2021,35,6
+Vicente de Carvalho,2022,62,17
+Vicente de Carvalho,2023,55,10
+Vicente de Carvalho,2024,29,10
+Paciência,2019,2,1
+Paciência,2020,1,1
+Paciência,2021,11,1
+Paciência,2022,6,0
+Paciência,2023,12,6
+Paciência,2024,6,1
+Engenho da Rainha,2019,23,5
+Engenho da Rainha,2020,11,4
+Engenho da Rainha,2021,5,1
+Engenho da Rainha,2022,11,4
+Engenho da Rainha,2023,10,4
+Engenho da Rainha,2024,12,7
+Complexo do Alemão,2019,275,71
+Complexo do Alemão,2020,121,19
+Complexo do Alemão,2021,82,21
+Complexo do Alemão,2022,37,14
+Complexo do Alemão,2023,18,8
+Complexo do Alemão,2024,16,10
+Vaz Lobo,2019,22,6
+Vaz Lobo,2020,9,1
+Vaz Lobo,2021,5,1
+Vaz Lobo,2022,10,2
+Vaz Lobo,2023,9,2
+Vaz Lobo,2024,2,0
+Padre Miguel,2019,47,7
+Padre Miguel,2020,39,7
+Padre Miguel,2021,37,10
+Padre Miguel,2022,11,1
+Padre Miguel,2023,22,6
+Padre Miguel,2024,15,2
+Bento Ribeiro,2019,8,1
+Bento Ribeiro,2020,5,1
+Bento Ribeiro,2021,9,0
+Bento Ribeiro,2022,7,0
+Bento Ribeiro,2023,7,0
+Bento Ribeiro,2024,1,0
+Turiaçú,2019,4,2
+Turiaçú,2020,0,0
+Turiaçú,2021,0,0
+Turiaçú,2022,3,3
+Turiaçú,2023,3,1
+Turiaçú,2024,3,1
+Bonsucesso,2019,32,9
+Bonsucesso,2020,13,2
+Bonsucesso,2021,10,0
+Bonsucesso,2022,12,5
+Bonsucesso,2023,8,5
+Bonsucesso,2024,10,6
+Inhaúma,2019,7,4
+Inhaúma,2020,8,4
+Inhaúma,2021,7,1
+Inhaúma,2022,11,0
+Inhaúma,2023,7,0
+Inhaúma,2024,7,5
+Tomás Coelho,2019,17,6
+Tomás Coelho,2020,10,0
+Tomás Coelho,2021,14,4
+Tomás Coelho,2022,10,4
+Tomás Coelho,2023,5,1
+Tomás Coelho,2024,10,2
+Santíssimo,2019,11,2
+Santíssimo,2020,11,2
+Santíssimo,2021,9,1
+Santíssimo,2022,8,3
+Santíssimo,2023,2,1
+Santíssimo,2024,2,1
+Madureira,2019,110,38
+Madureira,2020,48,24
+Madureira,2021,75,19
+Madureira,2022,47,30
+Madureira,2023,48,22
+Madureira,2024,27,10
+Oswaldo Cruz,2019,4,0
+Oswaldo Cruz,2020,2,0
+Oswaldo Cruz,2021,2,0
+Oswaldo Cruz,2022,3,0
+Oswaldo Cruz,2023,4,1
+Oswaldo Cruz,2024,0,0
+Santa Cruz,2019,15,2
+Santa Cruz,2020,16,2
+Santa Cruz,2021,34,4
+Santa Cruz,2022,20,1
+Santa Cruz,2023,31,3
+Santa Cruz,2024,21,5
+Magalhães Bastos,2019,6,4
+Magalhães Bastos,2020,2,0
+Magalhães Bastos,2021,2,1
+Magalhães Bastos,2022,4,1
+Magalhães Bastos,2023,2,1
+Magalhães Bastos,2024,1,1
+Senador Camará,2019,75,27
+Senador Camará,2020,34,13
+Senador Camará,2021,40,17
+Senador Camará,2022,27,8
+Senador Camará,2023,22,7
+Senador Camará,2024,10,4
+Cavalcanti,2019,20,7
+Cavalcanti,2020,5,1
+Cavalcanti,2021,6,1
+Cavalcanti,2022,8,2
+Cavalcanti,2023,6,3
+Cavalcanti,2024,13,9
+Campo dos Afonsos,2019,0,0
+Campo dos Afonsos,2020,0,0
+Campo dos Afonsos,2021,1,0
+Campo dos Afonsos,2022,0,0
+Campo dos Afonsos,2023,0,0
+Campo dos Afonsos,2024,0,0
+Higienópolis,2019,3,2
+Higienópolis,2020,0,0
+Higienópolis,2021,0,0
+Higienópolis,2022,1,1
+Higienópolis,2023,0,0
+Higienópolis,2024,0,0
+Manguinhos,2019,69,36
+Manguinhos,2020,30,8
+Manguinhos,2021,21,13
+Manguinhos,2022,38,14
+Manguinhos,2023,24,12
+Manguinhos,2024,12,8
+Engenheiro Leal,2019,1,0
+Engenheiro Leal,2020,2,0
+Engenheiro Leal,2021,1,0
+Engenheiro Leal,2022,0,0
+Engenheiro Leal,2023,1,0
+Engenheiro Leal,2024,0,0
+Pilares,2019,49,11
+Pilares,2020,17,6
+Pilares,2021,16,4
+Pilares,2022,14,5
+Pilares,2023,10,5
+Pilares,2024,9,8
+Del Castilho,2019,14,5
+Del Castilho,2020,8,1
+Del Castilho,2021,8,0
+Del Castilho,2022,17,4
+Del Castilho,2023,19,3
+Del Castilho,2024,8,0
+Piedade,2019,20,4
+Piedade,2020,17,4
+Piedade,2021,10,4
+Piedade,2022,27,8
+Piedade,2023,17,6
+Piedade,2024,18,9
+Cascadura,2019,7,2
+Cascadura,2020,19,3
+Cascadura,2021,26,2
+Cascadura,2022,55,1
+Cascadura,2023,57,9
+Cascadura,2024,47,10
+Vila Valqueire,2019,6,1
+Vila Valqueire,2020,10,0
+Vila Valqueire,2021,5,1
+Vila Valqueire,2022,4,1
+Vila Valqueire,2023,9,4
+Vila Valqueire,2024,7,0
+Maria da Graça,2019,2,0
+Maria da Graça,2020,0,0
+Maria da Graça,2021,3,0
+Maria da Graça,2022,4,0
+Maria da Graça,2023,1,1
+Maria da Graça,2024,0,0
+Quintino Bocaiúva,2019,26,8
+Quintino Bocaiúva,2020,53,4
+Quintino Bocaiúva,2021,48,13
+Quintino Bocaiúva,2022,30,7
+Quintino Bocaiúva,2023,9,4
+Quintino Bocaiúva,2024,6,1
+Jardim Sulacap,2019,0,0
+Jardim Sulacap,2020,3,0
+Jardim Sulacap,2021,3,1
+Jardim Sulacap,2022,3,1
+Jardim Sulacap,2023,0,0
+Jardim Sulacap,2024,1,0
+Campinho,2019,13,0
+Campinho,2020,6,1
+Campinho,2021,9,3
+Campinho,2022,47,8
+Campinho,2023,46,4
+Campinho,2024,36,5
+Abolição,2019,2,1
+Abolição,2020,0,0
+Abolição,2021,3,0
+Abolição,2022,1,0
+Abolição,2023,0,0
+Abolição,2024,1,0
+Senador Vasconcelos,2019,5,0
+Senador Vasconcelos,2020,2,0
+Senador Vasconcelos,2021,0,0
+Senador Vasconcelos,2022,1,0
+Senador Vasconcelos,2023,0,0
+Senador Vasconcelos,2024,0,0
+Cosmos,2019,2,0
+Cosmos,2020,3,0
+Cosmos,2021,11,0
+Cosmos,2022,3,0
+Cosmos,2023,4,1
+Cosmos,2024,5,0
+Jacarezinho,2019,31,18
+Jacarezinho,2020,18,6
+Jacarezinho,2021,20,10
+Jacarezinho,2022,19,13
+Jacarezinho,2023,29,20
+Jacarezinho,2024,24,14
+Cachambi,2019,13,3
+Cachambi,2020,6,0
+Cachambi,2021,10,0
+Cachambi,2022,15,2
+Cachambi,2023,8,3
+Cachambi,2024,10,1
+Praça Seca,2019,154,17
+Praça Seca,2020,42,4
+Praça Seca,2021,176,20
+Praça Seca,2022,73,12
+Praça Seca,2023,151,31
+Praça Seca,2024,40,16
+Benfica,2019,25,6
+Benfica,2020,11,2
+Benfica,2021,12,2
+Benfica,2022,8,1
+Benfica,2023,6,2
+Benfica,2024,5,2
+Engenho de Dentro,2019,15,4
+Engenho de Dentro,2020,6,2
+Engenho de Dentro,2021,19,1
+Engenho de Dentro,2022,26,8
+Engenho de Dentro,2023,6,1
+Engenho de Dentro,2024,14,0
+São Cristóvão,2019,25,14
+São Cristóvão,2020,9,1
+São Cristóvão,2021,13,2
+São Cristóvão,2022,9,2
+São Cristóvão,2023,7,2
+São Cristóvão,2024,12,4
+Vasco da Gama,2019,1,1
+Vasco da Gama,2020,2,0
+Vasco da Gama,2021,3,1
+Vasco da Gama,2022,6,1
+Vasco da Gama,2023,4,2
+Vasco da Gama,2024,2,1
+Inhoaíba,2019,2,0
+Inhoaíba,2020,5,1
+Inhoaíba,2021,9,0
+Inhoaíba,2022,2,0
+Inhoaíba,2023,2,1
+Inhoaíba,2024,3,0
+Todos os Santos,2019,3,0
+Todos os Santos,2020,1,1
+Todos os Santos,2021,3,1
+Todos os Santos,2022,4,0
+Todos os Santos,2023,2,1
+Todos os Santos,2024,5,1
+Jacaré,2019,6,0
+Jacaré,2020,14,2
+Jacaré,2021,1,1
+Jacaré,2022,4,0
+Jacaré,2023,3,0
+Jacaré,2024,2,0
+Encantado,2019,2,0
+Encantado,2020,4,4
+Encantado,2021,5,2
+Encantado,2022,3,3
+Encantado,2023,0,0
+Encantado,2024,2,1
+Rocha,2019,19,8
+Rocha,2020,8,3
+Rocha,2021,3,0
+Rocha,2022,0,0
+Rocha,2023,1,0
+Rocha,2024,1,0
+Méier,2019,6,2
+Méier,2020,9,0
+Méier,2021,13,5
+Méier,2022,9,1
+Méier,2023,9,0
+Méier,2024,5,1
+Gamboa,2019,24,10
+Gamboa,2020,25,10
+Gamboa,2021,17,8
+Gamboa,2022,5,3
+Gamboa,2023,4,2
+Gamboa,2024,0,0
+Santo Cristo,2019,6,4
+Santo Cristo,2020,5,1
+Santo Cristo,2021,4,3
+Santo Cristo,2022,1,1
+Santo Cristo,2023,1,1
+Santo Cristo,2024,6,3
+Centro,2019,22,4
+Centro,2020,12,5
+Centro,2021,5,2
+Centro,2022,16,3
+Centro,2023,9,2
+Centro,2024,3,2
+Sampaio,2019,12,5
+Sampaio,2020,15,4
+Sampaio,2021,5,0
+Sampaio,2022,2,1
+Sampaio,2023,3,0
+Sampaio,2024,5,2
+Riachuelo,2019,16,2
+Riachuelo,2020,6,2
+Riachuelo,2021,4,1
+Riachuelo,2022,3,2
+Riachuelo,2023,1,0
+Riachuelo,2024,0,0
+Saúde,2019,0,0
+Saúde,2020,1,0
+Saúde,2021,1,1
+Saúde,2022,0,0
+Saúde,2023,1,1
+Saúde,2024,0,0
+São Francisco Xavier,2019,4,1
+São Francisco Xavier,2020,0,0
+São Francisco Xavier,2021,2,1
+São Francisco Xavier,2022,1,1
+São Francisco Xavier,2023,0,0
+São Francisco Xavier,2024,1,0
+Engenho Novo,2019,59,21
+Engenho Novo,2020,29,12
+Engenho Novo,2021,22,6
+Engenho Novo,2022,28,2
+Engenho Novo,2023,14,4
+Engenho Novo,2024,8,4
+Mangueira,2019,54,21
+Mangueira,2020,29,5
+Mangueira,2021,22,8
+Mangueira,2022,7,0
+Mangueira,2023,9,4
+Mangueira,2024,17,3
+Tanque,2019,27,3
+Tanque,2020,9,0
+Tanque,2021,12,0
+Tanque,2022,42,8
+Tanque,2023,66,15
+Tanque,2024,26,15
+Taquara,2019,47,10
+Taquara,2020,9,3
+Taquara,2021,18,1
+Taquara,2022,23,10
+Taquara,2023,29,11
+Taquara,2024,22,9
+Água Santa,2019,33,13
+Água Santa,2020,17,2
+Água Santa,2021,10,3
+Água Santa,2022,17,10
+Água Santa,2023,9,7
+Água Santa,2024,2,1
+Lins de Vasconcelos,2019,64,31
+Lins de Vasconcelos,2020,45,18
+Lins de Vasconcelos,2021,26,10
+Lins de Vasconcelos,2022,41,18
+Lins de Vasconcelos,2023,10,3
+Lins de Vasconcelos,2024,10,3
+Freguesia (Jacarepaguá),2019,2,1
+Freguesia (Jacarepaguá),2020,11,4
+Freguesia (Jacarepaguá),2021,6,1
+Freguesia (Jacarepaguá),2022,8,2
+Freguesia (Jacarepaguá),2023,27,7
+Freguesia (Jacarepaguá),2024,19,6
+Cidade Nova,2019,5,4
+Cidade Nova,2020,1,0
+Cidade Nova,2021,3,2
+Cidade Nova,2022,3,0
+Cidade Nova,2023,5,2
+Cidade Nova,2024,2,0
+Praça da Bandeira,2019,2,0
+Praça da Bandeira,2020,2,1
+Praça da Bandeira,2021,5,3
+Praça da Bandeira,2022,3,0
+Praça da Bandeira,2023,2,0
+Praça da Bandeira,2024,2,0
+Vila Isabel,2019,55,17
+Vila Isabel,2020,41,20
+Vila Isabel,2021,56,20
+Vila Isabel,2022,55,9
+Vila Isabel,2023,25,2
+Vila Isabel,2024,88,8
+Maracanã,2019,9,2
+Maracanã,2020,2,0
+Maracanã,2021,7,4
+Maracanã,2022,6,4
+Maracanã,2023,6,1
+Maracanã,2024,15,4
+Glória,2019,6,2
+Glória,2020,2,0
+Glória,2021,2,1
+Glória,2022,1,1
+Glória,2023,3,1
+Glória,2024,0,0
+Rio Comprido,2019,52,21
+Rio Comprido,2020,32,8
+Rio Comprido,2021,63,14
+Rio Comprido,2022,29,12
+Rio Comprido,2023,12,5
+Rio Comprido,2024,9,3
+Santa Teresa,2019,54,27
+Santa Teresa,2020,42,11
+Santa Teresa,2021,43,8
+Santa Teresa,2022,33,12
+Santa Teresa,2023,10,6
+Santa Teresa,2024,12,4
+Estácio,2019,27,8
+Estácio,2020,22,7
+Estácio,2021,9,2
+Estácio,2022,12,4
+Estácio,2023,9,0
+Estácio,2024,8,3
+Tijuca,2019,181,23
+Tijuca,2020,117,25
+Tijuca,2021,97,26
+Tijuca,2022,32,13
+Tijuca,2023,19,5
+Tijuca,2024,32,14
+Catumbi,2019,24,5
+Catumbi,2020,10,3
+Catumbi,2021,12,1
+Catumbi,2022,9,2
+Catumbi,2023,6,3
+Catumbi,2024,4,1
+Grajaú,2019,4,1
+Grajaú,2020,15,4
+Grajaú,2021,48,13
+Grajaú,2022,20,1
+Grajaú,2023,2,0
+Grajaú,2024,7,3
+Pechincha,2019,8,1
+Pechincha,2020,0,0
+Pechincha,2021,4,2
+Pechincha,2022,7,2
+Pechincha,2023,7,2
+Pechincha,2024,3,0
+Andaraí,2019,20,7
+Andaraí,2020,56,11
+Andaraí,2021,47,15
+Andaraí,2022,20,5
+Andaraí,2023,8,0
+Andaraí,2024,8,1
+Catete,2019,7,2
+Catete,2020,3,0
+Catete,2021,5,0
+Catete,2022,9,5
+Catete,2023,8,3
+Catete,2024,3,0
+Flamengo,2019,5,2
+Flamengo,2020,3,1
+Flamengo,2021,3,1
+Flamengo,2022,7,2
+Flamengo,2023,5,2
+Flamengo,2024,4,0
+Laranjeiras,2019,5,0
+Laranjeiras,2020,3,3
+Laranjeiras,2021,2,1
+Laranjeiras,2022,6,3
+Laranjeiras,2023,4,1
+Laranjeiras,2024,0,0
+Guaratiba,2019,3,0
+Guaratiba,2020,1,1
+Guaratiba,2021,1,0
+Guaratiba,2022,7,2
+Guaratiba,2023,8,0
+Guaratiba,2024,18,2
+Vargem Grande,2019,0,0
+Vargem Grande,2020,1,0
+Vargem Grande,2021,0,0
+Vargem Grande,2022,1,0
+Vargem Grande,2023,10,4
+Vargem Grande,2024,5,1
+Alto da Boa Vista,2019,3,1
+Alto da Boa Vista,2020,4,1
+Alto da Boa Vista,2021,4,0
+Alto da Boa Vista,2022,3,1
+Alto da Boa Vista,2023,0,0
+Alto da Boa Vista,2024,0,0
+Cosme Velho,2019,2,0
+Cosme Velho,2020,8,2
+Cosme Velho,2021,9,0
+Cosme Velho,2022,3,0
+Cosme Velho,2023,5,0
+Cosme Velho,2024,0,0
+Curicica,2019,5,0
+Curicica,2020,7,0
+Curicica,2021,10,0
+Curicica,2022,11,2
+Curicica,2023,18,4
+Curicica,2024,4,2
+Botafogo,2019,20,14
+Botafogo,2020,14,2
+Botafogo,2021,3,2
+Botafogo,2022,7,3
+Botafogo,2023,5,2
+Botafogo,2024,0,0
+Urca,2019,0,0
+Urca,2020,0,0
+Urca,2021,1,1
+Urca,2022,0,0
+Urca,2023,0,0
+Urca,2024,0,0
+Cidade de Deus,2019,266,99
+Cidade de Deus,2020,123,38
+Cidade de Deus,2021,48,8
+Cidade de Deus,2022,31,15
+Cidade de Deus,2023,65,37
+Cidade de Deus,2024,30,18
+Sepetiba,2019,2,0
+Sepetiba,2020,0,0
+Sepetiba,2021,2,1
+Sepetiba,2022,2,0
+Sepetiba,2023,3,0
+Sepetiba,2024,4,1
+Anil,2019,4,0
+Anil,2020,2,1
+Anil,2021,4,0
+Anil,2022,3,0
+Anil,2023,17,2
+Anil,2024,13,1
+Jacarepaguá,2019,6,0
+Jacarepaguá,2020,5,2
+Jacarepaguá,2021,11,1
+Jacarepaguá,2022,13,4
+Jacarepaguá,2023,14,0
+Jacarepaguá,2024,16,4
+Camorim,2019,0,0
+Camorim,2020,0,0
+Camorim,2021,1,0
+Camorim,2022,0,0
+Camorim,2023,3,0
+Camorim,2024,0,0
+Humaitá,2019,2,2
+Humaitá,2020,2,1
+Humaitá,2021,1,0
+Humaitá,2022,0,0
+Humaitá,2023,1,0
+Humaitá,2024,1,0
+Gardênia Azul,2019,4,0
+Gardênia Azul,2020,5,1
+Gardênia Azul,2021,5,0
+Gardênia Azul,2022,3,1
+Gardênia Azul,2023,20,4
+Gardênia Azul,2024,52,13
+Jardim Botânico,2019,1,0
+Jardim Botânico,2020,2,1
+Jardim Botânico,2021,0,0
+Jardim Botânico,2022,0,0
+Jardim Botânico,2023,0,0
+Jardim Botânico,2024,0,0
+Vargem Pequena,2019,2,0
+Vargem Pequena,2020,0,0
+Vargem Pequena,2021,2,0
+Vargem Pequena,2022,0,0
+Vargem Pequena,2023,10,1
+Vargem Pequena,2024,22,8
+Copacabana,2019,78,23
+Copacabana,2020,36,4
+Copacabana,2021,15,4
+Copacabana,2022,12,2
+Copacabana,2023,14,1
+Copacabana,2024,7,2
+Leme,2019,20,9
+Leme,2020,12,2
+Leme,2021,6,3
+Leme,2022,2,1
+Leme,2023,3,2
+Leme,2024,1,1
+Lagoa,2019,2,2
+Lagoa,2020,2,2
+Lagoa,2021,0,0
+Lagoa,2022,2,1
+Lagoa,2023,1,1
+Lagoa,2024,2,0
+Itanhangá,2019,4,1
+Itanhangá,2020,1,1
+Itanhangá,2021,3,1
+Itanhangá,2022,6,2
+Itanhangá,2023,28,9
+Itanhangá,2024,72,21
+Gávea,2019,2,0
+Gávea,2020,0,0
+Gávea,2021,0,0
+Gávea,2022,2,1
+Gávea,2023,1,0
+Gávea,2024,2,0
+Barra da Tijuca,2019,13,3
+Barra da Tijuca,2020,7,0
+Barra da Tijuca,2021,11,5
+Barra da Tijuca,2022,16,3
+Barra da Tijuca,2023,9,2
+Barra da Tijuca,2024,18,2
+Leblon,2019,3,0
+Leblon,2020,2,0
+Leblon,2021,3,0
+Leblon,2022,2,1
+Leblon,2023,1,0
+Leblon,2024,0,0
+Ipanema,2019,6,3
+Ipanema,2020,3,1
+Ipanema,2021,4,3
+Ipanema,2022,4,2
+Ipanema,2023,0,0
+Ipanema,2024,0,0
+São Conrado,2019,1,0
+São Conrado,2020,0,0
+São Conrado,2021,0,0
+São Conrado,2022,1,1
+São Conrado,2023,1,1
+São Conrado,2024,0,0
+Rocinha,2019,49,10
+Rocinha,2020,14,2
+Rocinha,2021,22,2
+Rocinha,2022,10,5
+Rocinha,2023,5,1
+Rocinha,2024,5,3
+Pedra de Guaratiba,2019,2,0
+Pedra de Guaratiba,2020,0,0
+Pedra de Guaratiba,2021,0,0
+Pedra de Guaratiba,2022,1,0
+Pedra de Guaratiba,2023,2,1
+Pedra de Guaratiba,2024,3,0
+Recreio dos Bandeirantes,2019,13,1
+Recreio dos Bandeirantes,2020,6,0
+Recreio dos Bandeirantes,2021,12,2
+Recreio dos Bandeirantes,2022,9,0
+Recreio dos Bandeirantes,2023,29,5
+Recreio dos Bandeirantes,2024,16,3
+Vidigal,2019,47,20
+Vidigal,2020,8,5
+Vidigal,2021,2,0
+Vidigal,2022,1,0
+Vidigal,2023,1,1
+Vidigal,2024,1,1
+Joá,2019,0,0
+Joá,2020,0,0
+Joá,2021,0,0
+Joá,2022,0,0
+Joá,2023,0,0
+Joá,2024,0,0
+Barra de Guaratiba,2019,1,1
+Barra de Guaratiba,2020,0,0
+Barra de Guaratiba,2021,0,0
+Barra de Guaratiba,2022,0,0
+Barra de Guaratiba,2023,2,0
+Barra de Guaratiba,2024,0,0
+Grumari,2019,0,0
+Grumari,2020,0,0
+Grumari,2021,0,0
+Grumari,2022,0,0
+Grumari,2023,0,0
+Grumari,2024,1,0
+Caju,2019,18,8
+Caju,2020,22,10
+Caju,2021,7,3
+Caju,2022,13,7
+Caju,2023,5,1
+Caju,2024,2,2
+Deodoro,2019,10,4
+Deodoro,2020,5,3
+Deodoro,2021,0,0
+Deodoro,2022,2,0
+Deodoro,2023,3,2
+Deodoro,2024,4,1
+Campo Grande,2019,26,5
+Campo Grande,2020,29,3
+Campo Grande,2021,23,2
+Campo Grande,2022,33,4
+Campo Grande,2023,19,4
+Campo Grande,2024,24,2
+Bangu,2019,517,82
+Bangu,2020,383,48
+Bangu,2021,209,40
+Bangu,2022,121,48
+Bangu,2023,165,61
+Bangu,2024,73,30
+Gericinó,2019,1,0
+Gericinó,2020,0,0
+Gericinó,2021,0,0
+Gericinó,2022,0,0
+Gericinó,2023,0,0
+Gericinó,2024,1,1

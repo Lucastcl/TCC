@@ -1,0 +1,2 @@
+bairro,cluster_size,leverage_cluster,dcls,max_abs_dbetacs,termo_max_abs_dbetacs,dbetacs_termo_max,flag_dcls_maior_1,flag_dbetacs_maior_1,flag_influente
+Barra da Tijuca,6,0.14759519507470029,0.14815818167686975,1.0333019460459605,renda,1.0333019460459605,FALSE,TRUE,TRUE

@@ -1,0 +1,284 @@
+---
+title: "Áreas anuais de domínio territorial"
+subtitle: "Facções e milícias por bairro, 2019-2024"
+params:
+  recalcular_geometrias: false
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+suppressPackageStartupMessages({
+  library(sf)
+  library(readr)
+  library(dplyr)
+  library(tidyr)
+  library(stringr)
+  library(stringi)
+  library(jsonlite)
+  library(knitr)
+})
+
+localizar_projeto <- function() {
+  arquivo_rmd <- knitr::current_input(dir = TRUE)
+
+  candidatos <- c(
+    if (is.character(arquivo_rmd) && length(arquivo_rmd) == 1 && nzchar(arquivo_rmd)) dirname(arquivo_rmd),
+    getwd(),
+    file.path(getwd(), ".."),
+    file.path(getwd(), "..", "..")
+  )
+
+  for (candidato in unique(candidatos)) {
+    candidato_norm <- tryCatch(
+      normalizePath(candidato, mustWork = TRUE),
+      error = function(e) NA_character_
+    )
+
+    if (!is.na(candidato_norm) &&
+        dir.exists(file.path(candidato_norm, "dados")) &&
+        dir.exists(file.path(candidato_norm, "resultados")) &&
+        file.exists(file.path(candidato_norm, "Makefile"))) {
+      return(candidato_norm)
+    }
+  }
+
+  stop("Nao foi possivel localizar a raiz do projeto. Rode via Knit ou a partir da raiz do repositorio.")
+}
+
+projeto <- localizar_projeto()
+dados <- file.path(projeto, "dados")
+
+dir_faccoes <- file.path(dados, "brutos", "faccoes")
+dir_geojson <- file.path(dir_faccoes, "geojson_enriquecido_2019_2024")
+arquivo_malha_2017 <- file.path(
+  dados, "brutos", "malhas", "limite_bairros_2017.geojson"
+)
+arquivo_malha_2024 <- file.path(
+  dados, "brutos", "malhas", "limite_bairros_2024.geojson"
+)
+arquivo_regras <- file.path(dados, "regras_compatibilizacao_bairros.csv")
+arquivo_referencia_origem <- file.path(
+  dir_faccoes, "bairro_faccao_percentual_referencia_tcc.csv"
+)
+arquivo_referencia_final <- file.path(
+  dados, "intermediarios", "faccoes_bairro_ano_referencia_tcc.csv"
+)
+arquivo_recalculado <- file.path(
+  dados, "intermediarios", "faccoes_bairro_ano_recalculado.csv"
+)
+arquivo_saida <- file.path(
+  dados, "intermediarios", "faccoes_bairro_ano.csv"
+)
+arquivo_auditoria <- file.path(
+  projeto, "resultados", "auditorias", "faccoes_areas.json"
+)
+
+dir.create(dirname(arquivo_saida), recursive = TRUE, showWarnings = FALSE)
+dir.create(dirname(arquivo_auditoria), recursive = TRUE, showWarnings = FALSE)
+
+faccoes <- c("ADA", "CV", "Milicia", "TCP")
+crs_area <- 31983
+```
+
+# 1. Procedimento espacial
+
+Os mapas anuais são extraídos da página do Mapa Histórico dos Grupos Armados.
+O script `05_extrair_mapas_faccoes.py` salva as geometrias em GeoJSON e associa
+cada fragmento às malhas de bairros de 2024 e 2017. A malha de 2024 é a
+referência principal e a de 2017 funciona como complemento.
+
+As áreas são calculadas em SIRGAS 2000 / UTM zona 23S. Para um bairro \(i\) e
+um grupo \(g\), a medida é:
+
+\[
+100 \times \frac{A(B_i \cap G_g)}{A(B_i)}.
+\]
+
+# 2. Funções de apoio
+
+```{r funcoes}
+normalizar_nome <- function(x) {
+  x %>%
+    as.character() %>%
+    str_squish() %>%
+    stri_trans_general("Latin-ASCII") %>%
+    str_to_lower() %>%
+    str_replace_all("[^a-z0-9]+", " ") %>%
+    str_squish()
+}
+
+padronizar_malha <- function(caminho) {
+  malha <- st_read(caminho, quiet = TRUE) %>%
+    st_make_valid()
+
+  coluna_nome <- intersect(
+    c("nome", "NOME", "bairro", "BAIRRO", "Name"),
+    names(malha)
+  )[1]
+
+  malha %>%
+    transmute(
+      bairro = str_squish(as.character(.data[[coluna_nome]])),
+      chave = normalizar_nome(bairro),
+      geometry = geometry
+    ) %>%
+    filter(!is.na(chave), chave != "") %>%
+    st_transform(crs_area)
+}
+```
+
+# 3. Reprocessamento opcional das geometrias
+
+O reprocessamento completo pode ser ativado com
+`params = list(recalcular_geometrias = TRUE)`. A reprodução padrão utiliza a
+referência congelada porque a página de origem pode ser atualizada.
+
+```{r recalculo}
+if (isTRUE(params$recalcular_geometrias)) {
+  malha_2024 <- padronizar_malha(arquivo_malha_2024)
+  malha_2017 <- padronizar_malha(arquivo_malha_2017)
+
+  chaves_ausentes <- setdiff(malha_2017$chave, malha_2024$chave)
+  malha_bairros <- bind_rows(
+    malha_2024,
+    malha_2017 %>% filter(chave %in% chaves_ausentes)
+  ) %>%
+    group_by(chave) %>%
+    summarise(
+      bairro = first(bairro),
+      geometry = st_union(geometry),
+      .groups = "drop"
+    ) %>%
+    mutate(area_bairro_m2 = as.numeric(st_area(geometry)))
+
+  resultados_anuais <- vector("list", 6)
+
+  for (indice in seq_along(2019:2024)) {
+    ano_atual <- (2019:2024)[indice]
+    mapa <- st_read(
+      file.path(dir_geojson, paste0(ano_atual, ".geojson")),
+      quiet = TRUE
+    ) %>%
+      st_make_valid() %>%
+      st_transform(crs_area) %>%
+      mutate(
+        bairro = str_squish(as.character(bairro)),
+        chave = normalizar_nome(bairro),
+        faccao = str_squish(as.character(faccao))
+      ) %>%
+      filter(!is.na(chave), faccao %in% faccoes)
+
+    area_grupo <- mapa %>%
+      group_by(chave, faccao) %>%
+      summarise(
+        geometry = st_union(geometry),
+        .groups = "drop"
+      ) %>%
+      mutate(area_grupo_m2 = as.numeric(st_area(geometry))) %>%
+      st_drop_geometry()
+
+    resultados_anuais[[indice]] <- crossing(
+      chave = malha_bairros$chave,
+      faccao = faccoes
+    ) %>%
+      left_join(
+        malha_bairros %>%
+          st_drop_geometry() %>%
+          select(chave, bairro, area_bairro_m2),
+        by = "chave"
+      ) %>%
+      left_join(area_grupo, by = c("chave", "faccao")) %>%
+      mutate(
+        ano = ano_atual,
+        area_grupo_m2 = replace_na(area_grupo_m2, 0),
+        percentual_area_bairro = if_else(
+          area_bairro_m2 > 0,
+          pmin(area_grupo_m2 / area_bairro_m2 * 100, 100),
+          0
+        )
+      )
+  }
+
+  faccoes_recalculadas <- bind_rows(resultados_anuais) %>%
+    select(bairro, ano, faccao, percentual_area_bairro) %>%
+    pivot_wider(
+      names_from = faccao,
+      values_from = percentual_area_bairro,
+      names_prefix = "pct_area_dominacao_",
+      values_fill = 0
+    ) %>%
+    rename(
+      pct_area_dominacao_ada = pct_area_dominacao_ADA,
+      pct_area_dominacao_cv = pct_area_dominacao_CV,
+      pct_area_dominacao_milicia = pct_area_dominacao_Milicia,
+      pct_area_dominacao_tcp = pct_area_dominacao_TCP
+    )
+
+  write_csv(faccoes_recalculadas, arquivo_recalculado)
+  print(faccoes_recalculadas)
+} else {
+  cat("Reprocessamento espacial não solicitado; será usada a referência do TCC.\n")
+}
+```
+
+# 4. Referência utilizada no TCC
+
+```{r referencia_tcc}
+referencia_origem <- read_csv(
+  arquivo_referencia_origem,
+  show_col_types = FALSE
+)
+
+faccoes_tcc <- read_csv(
+  arquivo_referencia_final,
+  show_col_types = FALSE
+) %>%
+  arrange(bairro, ano)
+
+stopifnot(
+  nrow(faccoes_tcc) == 954,
+  n_distinct(faccoes_tcc$bairro) == 159,
+  identical(as.integer(sort(unique(faccoes_tcc$ano))), 2019:2024),
+  !anyDuplicated(faccoes_tcc[c("bairro", "ano")]),
+  !anyNA(faccoes_tcc)
+)
+
+write_csv(faccoes_tcc, arquivo_saida)
+
+faccoes_tcc %>%
+  group_by(ano) %>%
+  summarise(
+    ADA = mean(pct_area_dominacao_ada),
+    CV = mean(pct_area_dominacao_cv),
+    Milicia = mean(pct_area_dominacao_milicia),
+    TCP = mean(pct_area_dominacao_tcp),
+    .groups = "drop"
+  ) %>%
+  kable(digits = 3)
+```
+
+# 5. Auditoria
+
+```{r auditoria}
+auditoria <- list(
+  anos = sort(unique(faccoes_tcc$ano)),
+  bairros = n_distinct(faccoes_tcc$bairro),
+  linhas_referencia_origem = nrow(referencia_origem),
+  linhas_base_final = nrow(faccoes_tcc),
+  crs_calculo_area = "SIRGAS 2000 / UTM zona 23S (EPSG:31983)",
+  categorias = faccoes
+)
+
+write_json(
+  auditoria,
+  arquivo_auditoria,
+  pretty = TRUE,
+  auto_unbox = TRUE
+)
+auditoria
+```
